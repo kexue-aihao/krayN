@@ -87,6 +87,8 @@ Pushing a tag such as `v0.1.0` runs `.github/workflows/release.yml`, builds the 
 
 The workflow targets the same package family as FlClash v0.8.93: Android APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`; Windows `amd64`/`arm64` zip and setup packages; macOS `amd64`/`arm64` DMG packages; Linux `amd64` AppImage/deb/rpm and Linux `arm64` deb.
 
+Linux `arm64` currently publishes a core-sidecar deb because GitHub's stable Flutter Linux arm64 toolchain is not available through the hosted Flutter setup action.
+
 ## Notes
 
 The first runtime provides SOCKS5 proxying through KLESS. Full-device VPN/TUN capture needs platform-native glue:

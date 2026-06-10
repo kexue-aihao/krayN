@@ -148,7 +148,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
                             _FieldBox(
                               wide: twoColumns,
                               child: DropdownButtonFormField<String>(
-                                value: _transport,
+                                initialValue: _transport,
                                 decoration: const InputDecoration(
                                   labelText: 'Transport',
                                   prefixIcon: Icon(Icons.route_outlined),
@@ -364,4 +364,3 @@ class _FieldBox extends StatelessWidget {
     );
   }
 }
-
