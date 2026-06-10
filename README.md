@@ -1,16 +1,22 @@
 # krayN
 
-krayN is a high-performance cross-platform graphical client for KLESS nodes, built on top of [kexue-aihao/kray](https://github.com/kexue-aihao/kray).
+## [中文](#中文) | [English](#english) | [开源协议](#开源协议--license) | [GitHub Releases](https://github.com/kexue-aihao/krayN/releases) | [GitHub Actions](https://github.com/kexue-aihao/krayN/actions)
 
-The current implementation contains:
+## 中文
 
-- Go core sidecar using `kray/pkg/kless`.
-- Local SOCKS5 proxy and encrypted KLESS outbound relay.
-- HTTP control API for GUI/native integrations.
-- Flutter Material 3 client for Windows, macOS, Linux, Android, and iOS UI work.
-- Build matrix aligned with FlClash-style desktop/mobile packaging.
+krayN 是一个基于 [kexue-aihao/kray](https://github.com/kexue-aihao/kray) KLESS 核心构建的高性能、跨平台图形化代理节点客户端。
 
-## Repository Layout
+当前项目由 Flutter 图形界面、Go 运行时核心和 GitHub Actions 自动发布流水线组成，目标是提供接近 [FlClash v0.8.93](https://github.com/chen08209/FlClash/releases/tag/v0.8.93) 的平台覆盖能力。
+
+### 功能概览
+
+- 使用 `kray/pkg/kless` 作为 KLESS 协议核心。
+- Go sidecar 提供本地 SOCKS5 代理、KLESS 出站连接、节点配置、流量统计和 HTTP 控制 API。
+- Flutter Material 3 图形界面支持节点管理、启动/停止、状态查看和流量展示。
+- 桌面端会尝试自动启动同目录、当前目录、`core/` 或 `KRAYN_CORE` 指定的 `krayn-core`。
+- GitHub Actions 支持自动构建多平台包、生成 `SHA256SUMS` 并发布 GitHub Release。
+
+### 仓库结构
 
 ```text
 app/                 Flutter GUI
@@ -20,7 +26,7 @@ scripts/             Build helpers
 third_party/kray     kray core submodule
 ```
 
-## Quick Start
+### 快速开始
 
 ```powershell
 git submodule update --init --recursive
@@ -30,7 +36,7 @@ go run ./cmd/krayn-core -gen-keys
 go run ./cmd/krayn-core
 ```
 
-Then open the Flutter app from `app/` on a machine with Flutter installed:
+在安装 Flutter SDK 的机器上启动图形界面：
 
 ```powershell
 .\scripts\scaffold-flutter.ps1
@@ -39,11 +45,9 @@ flutter pub get
 flutter run -d windows
 ```
 
-The GUI attempts to auto-start a desktop `krayn-core` binary from the same directory, the current directory, `core/`, or the `KRAYN_CORE` environment variable. During development you can also run the core manually.
+### 控制 API
 
-## Control API
-
-The core listens on `127.0.0.1:9727` by default.
+默认控制 API 地址为 `127.0.0.1:9727`。
 
 - `GET /health`
 - `GET /state`
@@ -55,25 +59,144 @@ The core listens on `127.0.0.1:9727` by default.
 - `POST /start`
 - `POST /stop`
 
-Local SOCKS5 listens on `127.0.0.1:7890` by default once started.
+启动后，本地 SOCKS5 默认监听 `127.0.0.1:7890`。
 
-## Release Targets
+### 发布目标
 
-Reference coverage follows FlClash v0.8.93:
+发布包覆盖矩阵参考 FlClash v0.8.93：
 
-- Windows `amd64`, `arm64`: installer/zip capable.
-- macOS `amd64`, `arm64`: DMG capable.
-- Linux `amd64`, `arm64`: AppImage/deb/rpm capable.
-- Android `arm64-v8a`, `armeabi-v7a`, `x86_64`: APK capable.
-- iOS / iPadOS: Flutter UI is ready; production distribution requires Apple signing and Network Extension work.
+- Windows `amd64` / `arm64`：zip 和 setup.exe。
+- macOS `amd64` / `arm64`：DMG。
+- Linux `amd64`：AppImage、deb、rpm。
+- Linux `arm64`：deb。
+- Android `arm64-v8a` / `armeabi-v7a` / `x86_64`：APK。
+- iOS / iPadOS：Flutter UI 已准备，正式分发需要 Apple 签名和 Network Extension。
 
-Build the core matrix:
+构建 Go core 矩阵：
 
 ```powershell
 .\scripts\build-core.ps1 -Version 0.1.0 -Commit $(git rev-parse --short HEAD)
 ```
 
-Android Go sidecar builds require Android NDK/cgo; use `-IncludeAndroid` only in an Android toolchain environment. The normal mobile deliverable is the Flutter APK/IPA plus native VPN integration.
+Android Go sidecar 构建需要 Android NDK/cgo；仅在 Android 工具链环境中使用 `-IncludeAndroid`。移动端正式代理能力通常需要 APK/IPA 加平台原生 VPN 集成。
+
+Flutter 打包需要本机 Flutter SDK：
+
+```powershell
+.\scripts\build-flutter.ps1
+```
+
+### GitHub 自动发布
+
+推送 `v*` 标签会触发 [.github/workflows/release.yml](.github/workflows/release.yml)，自动构建发布矩阵、生成 `SHA256SUMS`，并发布到 [GitHub Releases](https://github.com/kexue-aihao/krayN/releases)。
+
+示例：
+
+```powershell
+git tag -a v0.1.1 -m "krayN v0.1.1"
+git push origin master
+git push origin v0.1.1
+```
+
+Linux `arm64` 当前发布 core-sidecar deb，因为 GitHub 托管 runner 上的 stable Flutter Linux arm64 工具链无法通过当前 Flutter setup action 稳定获取。
+
+### 平台集成说明
+
+第一版运行时提供 SOCKS5 到 KLESS 的代理能力。全局 VPN/TUN 捕获需要平台原生接入：
+
+- Android `VpnService`
+- iOS Network Extension packet tunnel
+- Windows Wintun / 系统代理集成
+- macOS Network Extension / 系统代理集成
+- Linux tun2socks / 系统代理集成
+
+更多说明见 [docs/architecture.md](docs/architecture.md) 和 [docs/profile-format.md](docs/profile-format.md)。
+
+### 开源协议 / License
+
+本仓库新增代码类型包括 Flutter/Dart GUI、Go runtime sidecar、PowerShell 构建脚本和 GitHub Actions 工作流。基于这类客户端应用和工具链代码的分发需求，krayN 采用宽松的 [MIT License](LICENSE) 开源。
+
+`third_party/kray` 是上游 Git 子模块，版权和许可边界以其上游仓库声明为准。
+
+---
+
+## English
+
+krayN is a high-performance cross-platform graphical client for KLESS nodes, built on top of [kexue-aihao/kray](https://github.com/kexue-aihao/kray).
+
+The project combines a Flutter GUI, a Go runtime sidecar, and GitHub Actions release automation. Its package matrix is designed to follow the platform coverage style of [FlClash v0.8.93](https://github.com/chen08209/FlClash/releases/tag/v0.8.93).
+
+### Features
+
+- Uses `kray/pkg/kless` as the KLESS protocol core.
+- Provides a Go sidecar for local SOCKS5 proxying, KLESS outbound connections, profile storage, traffic stats, and an HTTP control API.
+- Provides a Flutter Material 3 GUI for profile management, start/stop controls, runtime status, and traffic display.
+- Attempts to auto-start `krayn-core` from the app directory, current directory, `core/`, or the `KRAYN_CORE` environment variable on desktop platforms.
+- Uses GitHub Actions to build multi-platform packages, generate `SHA256SUMS`, and publish GitHub Releases.
+
+### Repository Layout
+
+```text
+app/                 Flutter GUI
+core/                Go runtime sidecar and control API
+docs/                Architecture and profile documentation
+scripts/             Build helpers
+third_party/kray     kray core submodule
+```
+
+### Quick Start
+
+```powershell
+git submodule update --init --recursive
+cd core
+go test ./...
+go run ./cmd/krayn-core -gen-keys
+go run ./cmd/krayn-core
+```
+
+Run the GUI on a machine with Flutter SDK installed:
+
+```powershell
+.\scripts\scaffold-flutter.ps1
+cd app
+flutter pub get
+flutter run -d windows
+```
+
+### Control API
+
+The control API listens on `127.0.0.1:9727` by default.
+
+- `GET /health`
+- `GET /state`
+- `GET /profiles`
+- `POST /profiles`
+- `PUT /profiles/{id}`
+- `DELETE /profiles/{id}`
+- `POST /profiles/{id}/activate`
+- `POST /start`
+- `POST /stop`
+
+After startup, the local SOCKS5 proxy listens on `127.0.0.1:7890` by default.
+
+### Release Targets
+
+The release package matrix follows FlClash v0.8.93:
+
+- Windows `amd64` / `arm64`: zip and setup.exe.
+- macOS `amd64` / `arm64`: DMG.
+- Linux `amd64`: AppImage, deb, rpm.
+- Linux `arm64`: deb.
+- Android `arm64-v8a` / `armeabi-v7a` / `x86_64`: APK.
+- iOS / iPadOS: Flutter UI is ready; production distribution requires Apple signing and Network Extension work.
+
+Build the Go core matrix:
+
+```powershell
+.\scripts\build-core.ps1 -Version 0.1.0 -Commit $(git rev-parse --short HEAD)
+```
+
+Android Go sidecar builds require Android NDK/cgo; use `-IncludeAndroid` only in an Android toolchain environment. Mobile proxy support normally requires APK/IPA packaging plus native VPN integration.
 
 Flutter packaging requires a local Flutter SDK:
 
@@ -81,17 +204,23 @@ Flutter packaging requires a local Flutter SDK:
 .\scripts\build-flutter.ps1
 ```
 
-## GitHub Release Automation
+### GitHub Release Automation
 
-Pushing a tag such as `v0.1.0` runs `.github/workflows/release.yml`, builds the release matrix, uploads `SHA256SUMS`, and publishes a GitHub Release automatically.
+Pushing a `v*` tag triggers [.github/workflows/release.yml](.github/workflows/release.yml), builds the release matrix, generates `SHA256SUMS`, and publishes to [GitHub Releases](https://github.com/kexue-aihao/krayN/releases).
 
-The workflow targets the same package family as FlClash v0.8.93: Android APKs for `arm64-v8a`, `armeabi-v7a`, and `x86_64`; Windows `amd64`/`arm64` zip and setup packages; macOS `amd64`/`arm64` DMG packages; Linux `amd64` AppImage/deb/rpm and Linux `arm64` deb.
+Example:
 
-Linux `arm64` currently publishes a core-sidecar deb because GitHub's stable Flutter Linux arm64 toolchain is not available through the hosted Flutter setup action.
+```powershell
+git tag -a v0.1.1 -m "krayN v0.1.1"
+git push origin master
+git push origin v0.1.1
+```
 
-## Notes
+Linux `arm64` currently publishes a core-sidecar deb because GitHub's hosted stable Flutter Linux arm64 toolchain is not reliably available through the current Flutter setup action.
 
-The first runtime provides SOCKS5 proxying through KLESS. Full-device VPN/TUN capture needs platform-native glue:
+### Platform Integration Notes
+
+The first runtime provides SOCKS5-to-KLESS proxying. Full-device VPN/TUN capture requires platform-native integration:
 
 - Android `VpnService`
 - iOS Network Extension packet tunnel
@@ -99,4 +228,10 @@ The first runtime provides SOCKS5 proxying through KLESS. Full-device VPN/TUN ca
 - macOS Network Extension / system proxy integration
 - Linux tun2socks / system proxy integration
 
-See [docs/architecture.md](docs/architecture.md) and [docs/profile-format.md](docs/profile-format.md).
+See [docs/architecture.md](docs/architecture.md) and [docs/profile-format.md](docs/profile-format.md) for details.
+
+### License
+
+This repository's own code includes Flutter/Dart GUI code, a Go runtime sidecar, PowerShell build scripts, and GitHub Actions workflows. For this type of client application and tooling code, krayN is released under the permissive [MIT License](LICENSE).
+
+`third_party/kray` is an upstream Git submodule. Its copyright and licensing boundary follows the upstream repository.
