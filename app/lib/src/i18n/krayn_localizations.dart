@@ -1,5 +1,3 @@
-import 'dart:collection';
-
 import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
@@ -19,7 +17,7 @@ class KrayNLocalizations {
   }
 
   static List<Locale> _buildSupportedLocales() {
-    final seen = LinkedHashSet<String>();
+    final seen = <String>{};
     final locales = <Locale>[];
 
     void add(Locale locale) {
@@ -31,8 +29,8 @@ class KrayNLocalizations {
     add(defaultLocale);
     add(const Locale('zh', 'TW'));
     add(const Locale.fromSubtags(languageCode: 'zh', scriptCode: 'Hant'));
-    for (final locale in GlobalMaterialLocalizations.supportedLocales) {
-      add(locale);
+    for (final languageCode in kMaterialSupportedLanguages) {
+      add(Locale(languageCode));
     }
     return List<Locale>.unmodifiable(locales);
   }
