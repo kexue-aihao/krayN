@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../../i18n/krayn_localizations.dart';
 import '../../models/profile.dart';
 import '../../models/runtime_state.dart';
+import '../brand/krayn_logo_mark.dart';
 import '../formatters.dart';
 
 class StatusPanel extends StatelessWidget {
@@ -22,6 +24,7 @@ class StatusPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = state.isRunning ? theme.colorScheme.primary : theme.colorScheme.outline;
+    final l = KrayNLocalizations.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -30,17 +33,27 @@ class StatusPanel extends StatelessWidget {
             final compact = constraints.maxWidth < 720;
             final header = Row(
               children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    state.isRunning ? Icons.power_settings_new : Icons.power_off,
-                    color: color,
-                  ),
+                Stack(
+                  children: [
+                    KrayNLogoMark(size: 56, active: state.isRunning),
+                    Positioned(
+                      right: 4,
+                      bottom: 4,
+                      child: Container(
+                        width: 18,
+                        height: 18,
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surface,
+                          borderRadius: BorderRadius.circular(5),
+                        ),
+                        child: Icon(
+                          state.isRunning ? Icons.power_settings_new : Icons.power_off,
+                          size: 14,
+                          color: color,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -48,14 +61,14 @@ class StatusPanel extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        activeProfile?.name ?? 'No active node',
+                        activeProfile?.name ?? l.noActiveNode,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.titleMedium,
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '${state.status.toUpperCase()}  SOCKS ${state.socksAddress.isEmpty ? '-' : state.socksAddress}',
+                        '${l.runtimeStatus(state.status)}  ${l.socks} ${state.socksAddress.isEmpty ? '-' : state.socksAddress}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
@@ -69,7 +82,7 @@ class StatusPanel extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: busy ? null : onStartStop,
                   icon: Icon(state.isRunning ? Icons.stop : Icons.play_arrow),
-                  label: Text(state.isRunning ? 'Stop' : 'Start'),
+                  label: Text(state.isRunning ? l.stop : l.start),
                 ),
               ],
             );
@@ -77,9 +90,9 @@ class StatusPanel extends StatelessWidget {
               spacing: 12,
               runSpacing: 10,
               children: [
-                _Metric(label: 'Up', value: formatBytes(state.uploadedBytes)),
-                _Metric(label: 'Down', value: formatBytes(state.downloadedBytes)),
-                _Metric(label: 'Conn', value: '${state.activeConnections}'),
+                _Metric(label: l.upload, value: formatBytes(state.uploadedBytes)),
+                _Metric(label: l.download, value: formatBytes(state.downloadedBytes)),
+                _Metric(label: l.connections, value: '${state.activeConnections}'),
               ],
             );
             if (compact) {

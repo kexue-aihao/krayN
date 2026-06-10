@@ -1,0 +1,9 @@
+flutter_launcher_icons:
+  image_path: assets/brand/krayn-icon.png
+  android: false
+  ios: false
+  windows:
+    generate: false
+  macos:
+    generate: true
+    image_path: assets/brand/krayn-icon.png

@@ -14,6 +14,7 @@ try {
         flutter create . --project-name krayn --org io.krayn --platforms windows,macos,linux,android,ios
     }
     flutter pub get
+    dart run flutter_launcher_icons
     flutter build windows --release
     flutter build linux --release
     flutter build macos --release

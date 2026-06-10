@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../i18n/krayn_localizations.dart';
 import '../models/profile.dart';
 
 class ProfileEditor extends StatefulWidget {
@@ -84,6 +85,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = KrayNLocalizations.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -96,12 +98,12 @@ class _ProfileEditorState extends State<ProfileEditor> {
                 children: [
                   Expanded(
                     child: Text(
-                      widget.initialProfile.id.isEmpty ? 'New Node' : 'Node Settings',
+                      widget.initialProfile.id.isEmpty ? l.newNode : l.nodeSettings,
                       style: theme.textTheme.titleLarge,
                     ),
                   ),
                   IconButton(
-                    tooltip: 'Delete',
+                    tooltip: l.delete,
                     onPressed: widget.busy ? null : () => widget.onDelete(widget.initialProfile),
                     icon: const Icon(Icons.delete_outline),
                   ),
@@ -109,7 +111,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
                   FilledButton.icon(
                     onPressed: widget.busy ? null : _submit,
                     icon: const Icon(Icons.save_outlined),
-                    label: const Text('Save'),
+                    label: Text(l.save),
                   ),
                 ],
               ),
@@ -128,20 +130,20 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               wide: twoColumns,
                               child: TextFormField(
                                 controller: _name,
-                                decoration: const InputDecoration(
-                                  labelText: 'Name',
-                                  prefixIcon: Icon(Icons.label_outline),
+                                decoration: InputDecoration(
+                                  labelText: l.name,
+                                  prefixIcon: const Icon(Icons.label_outline),
                                 ),
-                                validator: _required,
+                                validator: (value) => _required(value, l),
                               ),
                             ),
                             _FieldBox(
                               wide: twoColumns,
                               child: TextFormField(
                                 controller: _group,
-                                decoration: const InputDecoration(
-                                  labelText: 'Group',
-                                  prefixIcon: Icon(Icons.folder_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.group,
+                                  prefixIcon: const Icon(Icons.folder_outlined),
                                 ),
                               ),
                             ),
@@ -149,9 +151,9 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               wide: twoColumns,
                               child: DropdownButtonFormField<String>(
                                 initialValue: _transport,
-                                decoration: const InputDecoration(
-                                  labelText: 'Transport',
-                                  prefixIcon: Icon(Icons.route_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.transport,
+                                  prefixIcon: const Icon(Icons.route_outlined),
                                 ),
                                 items: _transports
                                     .map((item) => DropdownMenuItem(value: item, child: Text(item)))
@@ -167,31 +169,31 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               wide: twoColumns,
                               child: TextFormField(
                                 controller: _endpoint,
-                                decoration: const InputDecoration(
-                                  labelText: 'Endpoint',
-                                  prefixIcon: Icon(Icons.public),
+                                decoration: InputDecoration(
+                                  labelText: l.endpoint,
+                                  prefixIcon: const Icon(Icons.public),
                                 ),
-                                validator: _required,
+                                validator: (value) => _required(value, l),
                               ),
                             ),
                             _FieldBox(
                               wide: twoColumns,
                               child: TextFormField(
                                 controller: _clientId,
-                                decoration: const InputDecoration(
-                                  labelText: 'Client ID',
-                                  prefixIcon: Icon(Icons.badge_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.clientId,
+                                  prefixIcon: const Icon(Icons.badge_outlined),
                                 ),
-                                validator: _required,
+                                validator: (value) => _required(value, l),
                               ),
                             ),
                             _FieldBox(
                               wide: twoColumns,
                               child: TextFormField(
                                 controller: _serverName,
-                                decoration: const InputDecoration(
-                                  labelText: 'TLS Server Name',
-                                  prefixIcon: Icon(Icons.dns_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.tlsServerName,
+                                  prefixIcon: const Icon(Icons.dns_outlined),
                                 ),
                               ),
                             ),
@@ -199,22 +201,22 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               wide: false,
                               child: TextFormField(
                                 controller: _clientSecret,
-                                decoration: const InputDecoration(
-                                  labelText: 'Client Secret',
-                                  prefixIcon: Icon(Icons.key_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.clientSecret,
+                                  prefixIcon: const Icon(Icons.key_outlined),
                                 ),
-                                validator: _required,
+                                validator: (value) => _required(value, l),
                               ),
                             ),
                             _FieldBox(
                               wide: false,
                               child: TextFormField(
                                 controller: _serverPublicKey,
-                                decoration: const InputDecoration(
-                                  labelText: 'Server Public Key',
-                                  prefixIcon: Icon(Icons.verified_user_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.serverPublicKey,
+                                  prefixIcon: const Icon(Icons.verified_user_outlined),
                                 ),
-                                validator: _required,
+                                validator: (value) => _required(value, l),
                               ),
                             ),
                             _FieldBox(
@@ -222,11 +224,11 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               child: TextFormField(
                                 controller: _paddingMin,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'Padding Min',
-                                  prefixIcon: Icon(Icons.compress_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.paddingMin,
+                                  prefixIcon: const Icon(Icons.compress_outlined),
                                 ),
-                                validator: _number,
+                                validator: (value) => _number(value, l),
                               ),
                             ),
                             _FieldBox(
@@ -234,11 +236,11 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               child: TextFormField(
                                 controller: _paddingMax,
                                 keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                  labelText: 'Padding Max',
-                                  prefixIcon: Icon(Icons.unfold_more),
+                                decoration: InputDecoration(
+                                  labelText: l.paddingMax,
+                                  prefixIcon: const Icon(Icons.unfold_more),
                                 ),
-                                validator: _number,
+                                validator: (value) => _number(value, l),
                               ),
                             ),
                             _FieldBox(
@@ -246,9 +248,9 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               child: TextFormField(
                                 controller: _headers,
                                 maxLines: 4,
-                                decoration: const InputDecoration(
-                                  labelText: 'Headers',
-                                  prefixIcon: Icon(Icons.list_alt_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.headers,
+                                  prefixIcon: const Icon(Icons.list_alt_outlined),
                                   alignLabelWithHint: true,
                                 ),
                               ),
@@ -258,9 +260,9 @@ class _ProfileEditorState extends State<ProfileEditor> {
                               child: TextFormField(
                                 controller: _remark,
                                 maxLines: 3,
-                                decoration: const InputDecoration(
-                                  labelText: 'Remark',
-                                  prefixIcon: Icon(Icons.notes_outlined),
+                                decoration: InputDecoration(
+                                  labelText: l.remark,
+                                  prefixIcon: const Icon(Icons.notes_outlined),
                                   alignLabelWithHint: true,
                                 ),
                               ),
@@ -272,7 +274,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
                     const SizedBox(height: 12),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Skip TLS Verification'),
+                      title: Text(l.skipTlsVerification),
                       value: _skipTlsVerify,
                       onChanged: (value) => setState(() => _skipTlsVerify = value),
                       secondary: const Icon(Icons.shield_outlined),
@@ -311,20 +313,20 @@ class _ProfileEditorState extends State<ProfileEditor> {
     widget.onSave(profile);
   }
 
-  String? _required(String? value) {
+  String? _required(String? value, KrayNLocalizations l) {
     if (value == null || value.trim().isEmpty) {
-      return 'Required';
+      return l.requiredField;
     }
     return null;
   }
 
-  String? _number(String? value) {
+  String? _number(String? value, KrayNLocalizations l) {
     if (value == null || value.trim().isEmpty) {
       return null;
     }
     final parsed = int.tryParse(value.trim());
     if (parsed == null || parsed < 0) {
-      return 'Use a non-negative number';
+      return l.nonNegativeNumber;
     }
     return null;
   }

@@ -1,26 +1,52 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:intl/intl.dart';
 
+import '../i18n/krayn_localizations.dart';
+import '../i18n/language_catalog.dart';
 import '../models/profile.dart';
 import '../models/runtime_state.dart';
 import '../services/core_api.dart';
 import '../services/core_process.dart';
+import 'brand/krayn_logo_mark.dart';
 import 'profile_editor.dart';
 import 'widgets/status_panel.dart';
 
-class KrayNApp extends StatelessWidget {
+class KrayNApp extends StatefulWidget {
   const KrayNApp({super.key, required this.api, required this.process});
 
   final CoreApi api;
   final CoreProcess process;
 
   @override
+  State<KrayNApp> createState() => _KrayNAppState();
+}
+
+class _KrayNAppState extends State<KrayNApp> {
+  Locale _locale = KrayNLocalizations.defaultLocale;
+
+  void _setLocale(Locale locale) {
+    setState(() => _locale = locale);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    Intl.defaultLocale = _locale.toLanguageTag();
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'krayN',
+      locale: _locale,
+      supportedLocales: KrayNLocalizations.supportedLocales,
+      localizationsDelegates: const [
+        KrayNLocalizations.delegate,
+        GlobalMaterialLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+      ],
       theme: ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
@@ -55,16 +81,29 @@ class KrayNApp extends StatelessWidget {
           ),
         ),
       ),
-      home: DashboardPage(api: api, process: process),
+      home: DashboardPage(
+        api: widget.api,
+        process: widget.process,
+        locale: _locale,
+        onLocaleChanged: _setLocale,
+      ),
     );
   }
 }
 
 class DashboardPage extends StatefulWidget {
-  const DashboardPage({super.key, required this.api, required this.process});
+  const DashboardPage({
+    super.key,
+    required this.api,
+    required this.process,
+    required this.locale,
+    required this.onLocaleChanged,
+  });
 
   final CoreApi api;
   final CoreProcess process;
+  final Locale locale;
+  final ValueChanged<Locale> onLocaleChanged;
 
   @override
   State<DashboardPage> createState() => _DashboardPageState();
@@ -197,14 +236,25 @@ class _DashboardPageState extends State<DashboardPage> {
 
   @override
   Widget build(BuildContext context) {
+    final l = KrayNLocalizations.of(context);
     final width = MediaQuery.sizeOf(context).width;
     final isWide = width >= 920;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('krayN'),
+        leadingWidth: 60,
+        leading: const Padding(
+          padding: EdgeInsets.only(left: 16),
+          child: Center(child: KrayNLogoMark(size: 34)),
+        ),
+        title: Text(l.appTitle),
         actions: [
           IconButton(
-            tooltip: 'Refresh',
+            tooltip: l.language,
+            onPressed: () => _showLanguageDialog(context),
+            icon: const Icon(Icons.language),
+          ),
+          IconButton(
+            tooltip: l.refresh,
             onPressed: _loading ? null : () => _refresh(),
             icon: const Icon(Icons.refresh),
           ),
@@ -288,6 +338,54 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
   }
+
+  Future<void> _showLanguageDialog(BuildContext context) {
+    final selectedTag = widget.locale.toLanguageTag();
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final l = KrayNLocalizations.of(dialogContext);
+        final dialogHeight = math.min(
+          520.0,
+          MediaQuery.sizeOf(dialogContext).height * 0.68,
+        );
+        return AlertDialog(
+          title: Text(l.chooseLanguage),
+          contentPadding: const EdgeInsets.fromLTRB(0, 12, 0, 0),
+          content: SizedBox(
+            width: 420,
+            height: dialogHeight,
+            child: ListView.separated(
+              itemCount: LanguageCatalog.options.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final option = LanguageCatalog.options[index];
+                final selected = option.tag == selectedTag;
+                return ListTile(
+                  selected: selected,
+                  leading: Icon(
+                    selected ? Icons.check_circle : Icons.language,
+                  ),
+                  title: Text(option.label),
+                  subtitle: Text(option.tag),
+                  onTap: () {
+                    widget.onLocaleChanged(option.locale);
+                    Navigator.of(dialogContext).pop();
+                  },
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(l.close),
+            ),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _ProfileList extends StatelessWidget {
@@ -310,6 +408,7 @@ class _ProfileList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l = KrayNLocalizations.of(context);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -320,12 +419,12 @@ class _ProfileList extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Nodes',
+                    l.nodes,
                     style: theme.textTheme.titleLarge,
                   ),
                 ),
                 IconButton.filledTonal(
-                  tooltip: 'Add node',
+                  tooltip: l.addNode,
                   onPressed: onAdd,
                   icon: const Icon(Icons.add),
                 ),
@@ -334,8 +433,8 @@ class _ProfileList extends StatelessWidget {
             const SizedBox(height: 12),
             Expanded(
               child: profiles.isEmpty
-                  ? const Center(
-                      child: Text('No nodes yet'),
+                  ? Center(
+                      child: Text(l.noNodes),
                     )
                   : ListView.separated(
                       itemBuilder: (context, index) {
@@ -371,7 +470,7 @@ class _ProfileList extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                             ),
                             trailing: IconButton(
-                              tooltip: 'Activate',
+                              tooltip: active ? l.active : l.activate,
                               onPressed: active ? null : () => onActivate(profile),
                               icon: Icon(active ? Icons.check_circle : Icons.radio_button_unchecked),
                             ),

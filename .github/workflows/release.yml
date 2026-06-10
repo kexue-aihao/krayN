@@ -141,7 +141,7 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms android
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/flutter_launcher_icons-android.yaml
 
       - name: Remove generated sample tests
         shell: bash
@@ -150,6 +150,10 @@ jobs:
       - name: Get Flutter dependencies
         working-directory: app
         run: flutter pub get
+
+      - name: Apply Android app icon
+        working-directory: app
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons-android.yaml
 
       - name: Analyze Flutter app
         working-directory: app
@@ -209,7 +213,15 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms windows
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/flutter_launcher_icons-windows.yaml
+
+      - name: Get Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Apply Windows app icon
+        working-directory: app
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons-windows.yaml
 
       - name: Build Windows app
         working-directory: app
@@ -225,6 +237,7 @@ jobs:
             $bundle = "app\build\windows\runner\Release"
           }
           Copy-Item "dist\core\${{ matrix.core_artifact }}" "$bundle\krayn-core.exe"
+          Copy-Item "packaging\uninstall\uninstall-windows.ps1" "$bundle\uninstall-krayN.ps1"
           New-Item -ItemType Directory -Force dist\release | Out-Null
           Compress-Archive -Path "$bundle\*" -DestinationPath "dist\release\krayN-$version-windows-$arch.zip" -Force
 
@@ -238,26 +251,57 @@ jobs:
           if (-not (Test-Path $bundle)) {
             $bundle = "app\build\windows\runner\Release"
           }
+          New-Item -ItemType Directory -Force dist\installer-languages | Out-Null
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl" -OutFile "dist\installer-languages\ChineseSimplified.isl"
+          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseTraditional.isl" -OutFile "dist\installer-languages\ChineseTraditional.isl"
           $iss = @"
           [Setup]
           AppId={{io.krayn.krayN}}
           AppName=krayN
           AppVersion=$version
+          AppPublisher=krayN
           DefaultDirName={autopf}\krayN
           DefaultGroupName=krayN
           OutputDir=dist\release
           OutputBaseFilename=krayN-$version-windows-$arch-setup
           Compression=lzma
           SolidCompression=yes
+          CloseApplications=yes
+          CloseApplicationsFilter=krayn.exe,krayn-core.exe
+          ShowLanguageDialog=auto
+          UsePreviousLanguage=no
+          UninstallDisplayName=krayN
+          UninstallDisplayIcon={app}\krayn.exe
+          [Languages]
+          Name: "english"; MessagesFile: "compiler:Default.isl"
+          Name: "chinesesimplified"; MessagesFile: "dist\installer-languages\ChineseSimplified.isl"
+          Name: "chinesetraditional"; MessagesFile: "dist\installer-languages\ChineseTraditional.isl"
+          [CustomMessages]
+          english.CreateDesktopIcon=Create a desktop shortcut
+          chinesesimplified.CreateDesktopIcon=创建桌面快捷方式
+          chinesetraditional.CreateDesktopIcon=建立桌面捷徑
+          english.AdditionalIcons=Additional icons:
+          chinesesimplified.AdditionalIcons=附加图标：
+          chinesetraditional.AdditionalIcons=附加圖示：
+          english.UninstallKrayN=Uninstall krayN
+          chinesesimplified.UninstallKrayN=卸载 krayN
+          chinesetraditional.UninstallKrayN=解除安装 krayN
           [Files]
           Source: "$bundle\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
           Name: "{group}\krayN"; Filename: "{app}\krayn.exe"
+          Name: "{group}\{cm:UninstallKrayN}"; Filename: "{uninstallexe}"
           Name: "{commondesktop}\krayN"; Filename: "{app}\krayn.exe"; Tasks: desktopicon
           [Tasks]
-          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
+          Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+          [UninstallRun]
+          Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-krayN.ps1"" -AllUsers -SkipInstallDir -Silent"; Flags: runhidden waituntilterminated; RunOnceId: "krayNCompleteCleanup"
+          [UninstallDelete]
+          Type: filesandordirs; Name: "{userappdata}\krayN"
+          Type: filesandordirs; Name: "{localappdata}\krayN"
+          Type: filesandordirs; Name: "{localappdata}\krayn"
           "@
-          Set-Content -Path installer.iss -Value $iss
+          Set-Content -Path installer.iss -Value $iss -Encoding UTF8
           iscc installer.iss
 
       - uses: actions/upload-artifact@v4
@@ -323,12 +367,17 @@ jobs:
 
       - name: Restore krayN app sources
         if: matrix.flutter_gui
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets
 
       - name: Remove generated sample tests
         if: matrix.flutter_gui
         shell: bash
         run: rm -rf app/test
+
+      - name: Get Flutter dependencies
+        if: matrix.flutter_gui
+        working-directory: app
+        run: flutter pub get
 
       - name: Build Linux app
         if: matrix.flutter_gui
@@ -357,6 +406,7 @@ jobs:
           EOF
             chmod +x "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/krayn"
           fi
+          install -m 755 "packaging/uninstall/uninstall-unix.sh" "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/uninstall-krayN.sh"
           cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications/krayN.desktop" <<EOF
           [Desktop Entry]
           Type=Application
@@ -366,12 +416,7 @@ jobs:
           Categories=Network;
           EOF
           mkdir -p "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps"
-          cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps/krayN.svg" <<EOF
-          <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
-            <rect width="128" height="128" rx="24" fill="#006c67"/>
-            <path d="M36 76L62 28h30L68 62h28L54 108l14-32H36z" fill="#f4f8f7"/>
-          </svg>
-          EOF
+          cp app/assets/brand/krayn-logo.svg "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps/krayN.svg"
           mkdir -p "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/DEBIAN"
           cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/DEBIAN/control" <<EOF
           Package: krayn
@@ -432,6 +477,7 @@ jobs:
           exec "$HERE/usr/bin/krayn" "$@"
           EOF
           chmod +x "${appdir}/AppRun"
+          install -m 755 "packaging/uninstall/uninstall-unix.sh" "${appdir}/usr/bin/uninstall-krayN.sh"
           curl -L -o appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
           chmod +x appimagetool
           APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "${appdir}" "dist/release/krayN-${version}-linux-amd64.AppImage"
@@ -449,6 +495,7 @@ jobs:
     name: macOS ${{ matrix.arch }}
     needs: [prepare, core]
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -467,7 +514,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
+          cache: false
 
       - uses: actions/download-artifact@v4
         with:
@@ -482,7 +529,15 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms macos
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/flutter_launcher_icons-macos.yaml
+
+      - name: Get Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Apply macOS app icon
+        working-directory: app
+        run: dart run flutter_launcher_icons -f flutter_launcher_icons-macos.yaml
 
       - name: Build macOS app
         working-directory: app
@@ -498,8 +553,13 @@ jobs:
           mkdir -p "${app_bundle}/Contents/MacOS"
           cp "dist/core/${{ matrix.core_artifact }}" "${app_bundle}/Contents/MacOS/krayn-core"
           chmod +x "${app_bundle}/Contents/MacOS/krayn-core"
+          mkdir -p "${app_bundle}/Contents/Resources"
+          cp "packaging/uninstall/uninstall-unix.sh" "${app_bundle}/Contents/Resources/uninstall-krayN.sh"
+          chmod +x "${app_bundle}/Contents/Resources/uninstall-krayN.sh"
           mkdir -p dist/release dist/dmg
           cp -R "${app_bundle}" dist/dmg/
+          cp "packaging/uninstall/uninstall-unix.sh" dist/dmg/uninstall-krayN.sh
+          chmod +x dist/dmg/uninstall-krayN.sh
           ln -s /Applications dist/dmg/Applications
           hdiutil create -volname "krayN" -srcfolder dist/dmg -ov -format UDZO "dist/release/krayN-${version}-macos-${arch}.dmg"
 
