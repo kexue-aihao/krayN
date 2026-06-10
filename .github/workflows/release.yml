@@ -141,7 +141,7 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms android
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/flutter_launcher_icons-android.yaml
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/icon_config_android.yaml
 
       - name: Remove generated sample tests
         shell: bash
@@ -153,7 +153,7 @@ jobs:
 
       - name: Apply Android app icon
         working-directory: app
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons-android.yaml
+        run: dart run flutter_launcher_icons -f icon_config_android.yaml
 
       - name: Analyze Flutter app
         working-directory: app
@@ -213,7 +213,7 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms windows
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/flutter_launcher_icons-windows.yaml
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/icon_config_windows.yaml
 
       - name: Get Flutter dependencies
         working-directory: app
@@ -221,7 +221,7 @@ jobs:
 
       - name: Apply Windows app icon
         working-directory: app
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons-windows.yaml
+        run: dart run flutter_launcher_icons -f icon_config_windows.yaml
 
       - name: Build Windows app
         working-directory: app
@@ -529,7 +529,7 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms macos
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/flutter_launcher_icons-macos.yaml
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/icon_config_macos.yaml
 
       - name: Get Flutter dependencies
         working-directory: app
@@ -537,7 +537,7 @@ jobs:
 
       - name: Apply macOS app icon
         working-directory: app
-        run: dart run flutter_launcher_icons -f flutter_launcher_icons-macos.yaml
+        run: dart run flutter_launcher_icons -f icon_config_macos.yaml
 
       - name: Build macOS app
         working-directory: app
