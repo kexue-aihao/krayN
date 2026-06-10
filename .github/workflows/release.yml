@@ -1,0 +1,527 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without leading v"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: krayN
+  FLUTTER_CHANNEL: stable
+  JAVA_VERSION: "17"
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            tag="${GITHUB_REF_NAME}"
+            version="${tag#v}"
+          elif [[ -n "${{ inputs.version }}" ]]; then
+            version="${{ inputs.version }}"
+            tag="v${version}"
+          else
+            version="0.0.0-${GITHUB_SHA::7}"
+            tag="nightly-${GITHUB_SHA::7}"
+          fi
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+
+  core:
+    name: Core ${{ matrix.goos }} ${{ matrix.goarch }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            artifact: krayn-core-windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            artifact: krayn-core-windows-arm64.exe
+          - goos: linux
+            goarch: amd64
+            artifact: krayn-core-linux-amd64
+          - goos: linux
+            goarch: arm64
+            artifact: krayn-core-linux-arm64
+          - goos: darwin
+            goarch: amd64
+            artifact: krayn-core-darwin-amd64
+          - goos: darwin
+            goarch: arm64
+            artifact: krayn-core-darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: core/go.mod
+          cache-dependency-path: core/go.mod
+
+      - name: Test core
+        if: matrix.goos == 'linux' && matrix.goarch == 'amd64'
+        working-directory: core
+        run: go test ./...
+
+      - name: Build core
+        shell: bash
+        working-directory: core
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          mkdir -p ../dist/core
+          go build -trimpath \
+            -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.version }} -X main.commit=${GITHUB_SHA::7}" \
+            -o "../dist/core/${{ matrix.artifact }}" \
+            ./cmd/krayn-core
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/core/${{ matrix.artifact }}
+
+  android:
+    name: Android ${{ matrix.abi }}
+    needs: prepare
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            output: app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+            asset_suffix: android-arm64-v8a.apk
+          - abi: armeabi-v7a
+            output: app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+            asset_suffix: android-armeabi-v7a.apk
+          - abi: x86_64
+            output: app/build/app/outputs/flutter-apk/app-x86_64-release.apk
+            asset_suffix: android-x86_64.apk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - name: Scaffold Flutter runners
+        working-directory: app
+        run: flutter create . --project-name krayn --org io.krayn --platforms android
+
+      - name: Restore krayN app sources
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+
+      - name: Get Flutter dependencies
+        working-directory: app
+        run: flutter pub get
+
+      - name: Analyze Flutter app
+        working-directory: app
+        run: flutter analyze
+
+      - name: Build split APKs
+        working-directory: app
+        run: flutter build apk --release --split-per-abi
+
+      - name: Stage APK
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          cp "${{ matrix.output }}" "dist/release/krayN-${{ needs.prepare.outputs.version }}-${{ matrix.asset_suffix }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: krayN-${{ needs.prepare.outputs.version }}-${{ matrix.asset_suffix }}
+          path: dist/release/krayN-${{ needs.prepare.outputs.version }}-${{ matrix.asset_suffix }}
+
+  windows:
+    name: Windows ${{ matrix.arch }}
+    needs: [prepare, core]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: windows-latest
+            flutter_arch: x64
+            core_artifact: krayn-core-windows-amd64.exe
+          - arch: arm64
+            runner: windows-11-arm
+            flutter_arch: arm64
+            core_artifact: krayn-core-windows-arm64.exe
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.core_artifact }}
+          path: dist/core
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Scaffold Flutter runners
+        working-directory: app
+        run: flutter create . --project-name krayn --org io.krayn --platforms windows
+
+      - name: Restore krayN app sources
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+
+      - name: Build Windows app
+        working-directory: app
+        run: flutter build windows --release
+
+      - name: Stage Windows zip
+        shell: pwsh
+        run: |
+          $version = "${{ needs.prepare.outputs.version }}"
+          $arch = "${{ matrix.arch }}"
+          $bundle = "app\build\windows\${{ matrix.flutter_arch }}\runner\Release"
+          if (-not (Test-Path $bundle)) {
+            $bundle = "app\build\windows\runner\Release"
+          }
+          Copy-Item "dist\core\${{ matrix.core_artifact }}" "$bundle\krayn-core.exe"
+          New-Item -ItemType Directory -Force dist\release | Out-Null
+          Compress-Archive -Path "$bundle\*" -DestinationPath "dist\release\krayN-$version-windows-$arch.zip" -Force
+
+      - name: Create Windows installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          $version = "${{ needs.prepare.outputs.version }}"
+          $arch = "${{ matrix.arch }}"
+          $bundle = "app\build\windows\${{ matrix.flutter_arch }}\runner\Release"
+          if (-not (Test-Path $bundle)) {
+            $bundle = "app\build\windows\runner\Release"
+          }
+          $iss = @"
+          [Setup]
+          AppId={{io.krayn.krayN}}
+          AppName=krayN
+          AppVersion=$version
+          DefaultDirName={autopf}\krayN
+          DefaultGroupName=krayN
+          OutputDir=dist\release
+          OutputBaseFilename=krayN-$version-windows-$arch-setup
+          Compression=lzma
+          SolidCompression=yes
+          [Files]
+          Source: "$bundle\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+          [Icons]
+          Name: "{group}\krayN"; Filename: "{app}\krayn.exe"
+          Name: "{commondesktop}\krayN"; Filename: "{app}\krayn.exe"; Tasks: desktopicon
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional icons:"
+          "@
+          Set-Content -Path installer.iss -Value $iss
+          iscc installer.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: krayN-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}
+          path: |
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}.zip
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}-setup.exe
+          if-no-files-found: ignore
+
+  linux:
+    name: Linux ${{ matrix.arch }}
+    needs: [prepare, core]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+            core_artifact: krayn-core-linux-amd64
+            deb_arch: amd64
+            appimage: true
+            rpm: true
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            core_artifact: krayn-core-linux-arm64
+            deb_arch: arm64
+            appimage: false
+            rpm: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.core_artifact }}
+          path: dist/core
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev dpkg-dev rpm patchelf
+
+      - name: Enable Linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Scaffold Flutter runners
+        working-directory: app
+        run: flutter create . --project-name krayn --org io.krayn --platforms linux
+
+      - name: Restore krayN app sources
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+
+      - name: Build Linux app
+        working-directory: app
+        run: flutter build linux --release
+
+      - name: Stage Linux bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          arch="${{ matrix.arch }}"
+          bundle="app/build/linux/${arch}/release/bundle"
+          if [[ ! -d "${bundle}" ]]; then
+            bundle="app/build/linux/x64/release/bundle"
+          fi
+          install -m 755 "dist/core/${{ matrix.core_artifact }}" "${bundle}/krayn-core"
+          mkdir -p dist/release "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN" "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications"
+          cp -a "${bundle}/." "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/"
+          cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications/krayN.desktop" <<EOF
+          [Desktop Entry]
+          Type=Application
+          Name=krayN
+          Exec=/opt/krayN/krayn
+          Icon=krayN
+          Categories=Network;
+          EOF
+          mkdir -p "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps"
+          cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps/krayN.svg" <<EOF
+          <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+            <rect width="128" height="128" rx="24" fill="#006c67"/>
+            <path d="M36 76L62 28h30L68 62h28L54 108l14-32H36z" fill="#f4f8f7"/>
+          </svg>
+          EOF
+          mkdir -p "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/DEBIAN"
+          cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/DEBIAN/control" <<EOF
+          Package: krayn
+          Version: ${version}
+          Section: net
+          Priority: optional
+          Architecture: ${{ matrix.deb_arch }}
+          Maintainer: krayN
+          Description: Cross-platform GUI client for kray KLESS nodes
+          EOF
+          dpkg-deb --build "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}" "dist/release/krayN-${version}-linux-${arch}.deb"
+
+      - name: Build Linux rpm
+        if: matrix.rpm
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
+          tar --exclude='./DEBIAN' -C "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}" -czf "rpmbuild/SOURCES/krayn-${version}.tar.gz" .
+          cat > rpmbuild/SPECS/krayn.spec <<EOF
+          Name: krayn
+          Version: ${version}
+          Release: 1%{?dist}
+          Summary: Cross-platform GUI client for kray KLESS nodes
+          License: MIT
+          BuildArch: x86_64
+          %description
+          Cross-platform GUI client for kray KLESS nodes.
+          %prep
+          %setup -q -c -T
+          tar -xzf %{SOURCE0}
+          %install
+          mkdir -p %{buildroot}
+          cp -a . %{buildroot}/
+          %files
+          /opt/krayN
+          /usr/share/applications/krayN.desktop
+          /usr/share/icons/hicolor/scalable/apps/krayN.svg
+          EOF
+          rpmbuild --define "_topdir $PWD/rpmbuild" -bb rpmbuild/SPECS/krayn.spec
+          cp rpmbuild/RPMS/x86_64/*.rpm "dist/release/krayN-${version}-linux-amd64.rpm"
+
+      - name: Build Linux AppImage
+        if: matrix.appimage
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          appdir="dist/AppDir"
+          mkdir -p "${appdir}/usr/bin" "${appdir}/usr/share/applications"
+          cp -a "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/." "${appdir}/usr/bin/"
+          cp "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications/krayN.desktop" "${appdir}/krayN.desktop"
+          cp "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps/krayN.svg" "${appdir}/krayN.svg"
+          cat > "${appdir}/AppRun" <<'EOF'
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "$0")")"
+          exec "$HERE/usr/bin/krayn" "$@"
+          EOF
+          chmod +x "${appdir}/AppRun"
+          curl -L -o appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "${appdir}" "dist/release/krayN-${version}-linux-amd64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}
+          path: |
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.deb
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.rpm
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.AppImage
+          if-no-files-found: ignore
+
+  macos:
+    name: macOS ${{ matrix.arch }}
+    needs: [prepare, core]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: macos-15-intel
+            core_artifact: krayn-core-darwin-amd64
+          - arch: arm64
+            runner: macos-15
+            core_artifact: krayn-core-darwin-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.core_artifact }}
+          path: dist/core
+
+      - name: Enable macOS desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Scaffold Flutter runners
+        working-directory: app
+        run: flutter create . --project-name krayn --org io.krayn --platforms macos
+
+      - name: Restore krayN app sources
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib
+
+      - name: Build macOS app
+        working-directory: app
+        run: flutter build macos --release
+
+      - name: Build DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${{ needs.prepare.outputs.version }}"
+          arch="${{ matrix.arch }}"
+          app_bundle="app/build/macos/Build/Products/Release/krayn.app"
+          mkdir -p "${app_bundle}/Contents/MacOS"
+          cp "dist/core/${{ matrix.core_artifact }}" "${app_bundle}/Contents/MacOS/krayn-core"
+          chmod +x "${app_bundle}/Contents/MacOS/krayn-core"
+          mkdir -p dist/release dist/dmg
+          cp -R "${app_bundle}" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          hdiutil create -volname "krayN" -srcfolder dist/dmg -ov -format UDZO "dist/release/krayN-${version}-macos-${arch}.dmg"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: krayN-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}
+          path: dist/release/krayN-${{ needs.prepare.outputs.version }}-macos-${{ matrix.arch }}.dmg
+
+  checksums:
+    name: Checksums
+    needs: [prepare, android, windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: krayN-*
+          path: dist/release
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist/release
+          sha256sum * > SHA256SUMS
+          ls -la
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-assets
+          path: dist/release/*
+
+  release:
+    name: Publish GitHub Release
+    needs: [prepare, checksums]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-assets
+          path: dist/release
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: krayN ${{ needs.prepare.outputs.version }}
+          draft: false
+          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
+          generate_release_notes: true
+          files: dist/release/*
