@@ -98,6 +98,33 @@ class KrayNLocalizations {
   String get invalidSubscriptionProfile => _text('invalidSubscriptionProfile');
   String get clipboardEmpty => _text('clipboardEmpty');
   String get systemProxyApplyFailed => _text('systemProxyApplyFailed');
+  String get diagnostics => _text('diagnostics');
+  String get runDiagnostics => _text('runDiagnostics');
+  String get latencyTarget => _text('latencyTarget');
+  String get speedTarget => _text('speedTarget');
+  String get customUrl => _text('customUrl');
+  String get rttLatency => _text('rttLatency');
+  String get httpsLatency => _text('httpsLatency');
+  String get speedTest => _text('speedTest');
+  String get egressIp => _text('egressIp');
+  String get asn => _text('asn');
+  String get ipPurity => _text('ipPurity');
+  String get openPurity => _text('openPurity');
+  String get resolvedIps => _text('resolvedIps');
+  String get diagnosticErrors => _text('diagnosticErrors');
+  String get resolverSettings => _text('resolverSettings');
+  String get resolverType => _text('resolverType');
+  String get resolverPreset => _text('resolverPreset');
+  String get resolverAddress => _text('resolverAddress');
+  String get resolverSystem => _text('resolverSystem');
+  String get resolverDns => _text('resolverDns');
+  String get resolverDoh => _text('resolverDoh');
+  String get resolverCustom => _text('resolverCustom');
+  String get saveResolver => _text('saveResolver');
+  String get noDiagnosticResult => _text('noDiagnosticResult');
+  String get testing => _text('testing');
+  String get copied => _text('copied');
+  String get unavailable => _text('unavailable');
 
   String subscriptionImported(int count) {
     return _text('subscriptionImported').replaceAll('{count}', '$count');
@@ -175,6 +202,33 @@ const _zhValues = {
   'invalidSubscriptionProfile': '订阅中的节点字段不完整',
   'clipboardEmpty': '剪贴板为空',
   'systemProxyApplyFailed': '系统代理设置失败',
+  'diagnostics': '节点诊断',
+  'runDiagnostics': '开始测试',
+  'latencyTarget': '延迟测试地址',
+  'speedTarget': '测速地址',
+  'customUrl': '自定义地址',
+  'rttLatency': 'RTT 延迟',
+  'httpsLatency': 'HTTPS 延迟',
+  'speedTest': '下载测速',
+  'egressIp': '出口 IP',
+  'asn': 'ASN',
+  'ipPurity': 'IP 纯净度',
+  'openPurity': '打开 Ping0',
+  'resolvedIps': '解析 IP',
+  'diagnosticErrors': '诊断提示',
+  'resolverSettings': '节点解析',
+  'resolverType': '解析方式',
+  'resolverPreset': '预设',
+  'resolverAddress': '解析地址',
+  'resolverSystem': '系统默认',
+  'resolverDns': 'DNS',
+  'resolverDoh': 'DoH',
+  'resolverCustom': '自定义',
+  'saveResolver': '保存解析',
+  'noDiagnosticResult': '尚未测试',
+  'testing': '测试中',
+  'copied': '已复制',
+  'unavailable': '不可用',
   'subscriptionImported': '已导入 {count} 个节点',
   'status_running': '运行中',
   'status_starting': '启动中',
@@ -240,6 +294,33 @@ const _enValues = {
       'A node in the subscription is missing required fields',
   'clipboardEmpty': 'Clipboard is empty',
   'systemProxyApplyFailed': 'Could not update the system proxy',
+  'diagnostics': 'Node Diagnostics',
+  'runDiagnostics': 'Run Test',
+  'latencyTarget': 'Latency URL',
+  'speedTarget': 'Speed URL',
+  'customUrl': 'Custom URL',
+  'rttLatency': 'RTT latency',
+  'httpsLatency': 'HTTPS latency',
+  'speedTest': 'Download speed',
+  'egressIp': 'Egress IP',
+  'asn': 'ASN',
+  'ipPurity': 'IP purity',
+  'openPurity': 'Open Ping0',
+  'resolvedIps': 'Resolved IPs',
+  'diagnosticErrors': 'Diagnostic notes',
+  'resolverSettings': 'Node DNS',
+  'resolverType': 'Resolver',
+  'resolverPreset': 'Preset',
+  'resolverAddress': 'Resolver address',
+  'resolverSystem': 'System',
+  'resolverDns': 'DNS',
+  'resolverDoh': 'DoH',
+  'resolverCustom': 'Custom',
+  'saveResolver': 'Save DNS',
+  'noDiagnosticResult': 'Not tested yet',
+  'testing': 'Testing',
+  'copied': 'Copied',
+  'unavailable': 'Unavailable',
   'subscriptionImported': 'Imported {count} nodes',
   'status_running': 'Running',
   'status_starting': 'Starting',

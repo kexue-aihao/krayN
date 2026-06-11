@@ -1,9 +1,14 @@
 package engine
 
 import (
+	"bufio"
 	"context"
 	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/sha1"
 	"crypto/tls"
+	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,6 +17,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,7 +26,6 @@ import (
 	"kray/pkg/kless/transport/grpc"
 	"kray/pkg/kless/transport/httpstream"
 	"kray/pkg/kless/transport/httpupgrade"
-	"kray/pkg/kless/transport/tcp"
 	tlstransport "kray/pkg/kless/transport/tls"
 	"kray/pkg/kless/transport/websocket"
 	"kray/pkg/kless/transport/xhttp"
@@ -35,6 +41,19 @@ const (
 	StatusStarting Status = "starting"
 	StatusRunning  Status = "running"
 	StatusError    Status = "error"
+)
+
+const (
+	defaultLatencyURL     = "https://www.google.com/generate_204"
+	defaultSpeedURL       = "https://speed.cloudflare.com/__down?bytes=10000000"
+	egressInfoURL         = "https://api.ip.sb/geoip"
+	egressInfoFallbackURL = "https://ipinfo.io/json"
+	purityBaseURL         = "http://ping0.co/"
+
+	diagnosticConnectTimeout = 8 * time.Second
+	diagnosticHTTPTimeout    = 15 * time.Second
+	diagnosticSpeedTimeout   = 45 * time.Second
+	maxSpeedDownloadBytes    = 100 << 20
 )
 
 type Engine struct {
@@ -61,6 +80,33 @@ type RuntimeState struct {
 	Mode            string         `json:"mode"`
 	SystemProxyMode string         `json:"system_proxy_mode"`
 	Stats           stats.Snapshot `json:"stats"`
+}
+
+type DiagnosticRequest struct {
+	LatencyURL string `json:"latency_url,omitempty"`
+	SpeedURL   string `json:"speed_url,omitempty"`
+}
+
+type DiagnosticResult struct {
+	ProfileID       string   `json:"profile_id"`
+	ProfileName     string   `json:"profile_name"`
+	RTTMs           int64    `json:"rtt_ms,omitempty"`
+	HTTPSMs         int64    `json:"https_ms,omitempty"`
+	SpeedMbps       float64  `json:"speed_mbps,omitempty"`
+	DownloadedBytes int64    `json:"downloaded_bytes,omitempty"`
+	EgressIP        string   `json:"egress_ip,omitempty"`
+	ASN             int      `json:"asn,omitempty"`
+	ASNOrganization string   `json:"asn_organization,omitempty"`
+	ISP             string   `json:"isp,omitempty"`
+	Country         string   `json:"country,omitempty"`
+	CountryCode     string   `json:"country_code,omitempty"`
+	City            string   `json:"city,omitempty"`
+	PuritySummary   string   `json:"purity_summary,omitempty"`
+	PurityURL       string   `json:"purity_url,omitempty"`
+	ResolvedIPs     []string `json:"resolved_ips,omitempty"`
+	LatencyURL      string   `json:"latency_url,omitempty"`
+	SpeedURL        string   `json:"speed_url,omitempty"`
+	Errors          []string `json:"errors,omitempty"`
 }
 
 func New(configPath string, logger *slog.Logger) (*Engine, error) {
@@ -238,7 +284,7 @@ func (e *Engine) UpdateLocal(local config.LocalConfig) error {
 	next := cloneConfig(e.cfg)
 	next.Local = local
 	config.Normalize(&next)
-	if err := config.Validate(next); err != nil && len(next.Profiles) > 0 {
+	if err := config.Validate(next); err != nil {
 		return err
 	}
 	if err := config.Save(e.configPath, next); err != nil {
@@ -253,14 +299,108 @@ func (e *Engine) DialContext(ctx context.Context, target proxy.Target) (io.ReadW
 	cfg := cloneConfig(e.cfg)
 	e.mu.RUnlock()
 	if config.NormalizeMode(cfg.Local.Mode) == "direct" {
-		var dialer net.Dialer
-		return dialer.DialContext(ctx, "tcp", target.Address())
+		resolver := newResolver(cfg.Local)
+		return resolver.DialContext(ctx, "tcp", target.Address())
 	}
 	profile, ok := config.FindProfile(cfg, cfg.ActiveProfileID)
 	if !ok {
 		return nil, errors.New("no active profile selected")
 	}
-	raw, err := dialTransport(ctx, profile)
+	return e.dialProfileContext(ctx, profile, target, cfg.Local)
+}
+
+func (e *Engine) TestProfile(ctx context.Context, profileID string, req DiagnosticRequest) (DiagnosticResult, error) {
+	cfg := e.Config()
+	if profileID == "" {
+		profileID = cfg.ActiveProfileID
+	}
+	profile, ok := config.FindProfile(cfg, profileID)
+	if !ok {
+		return DiagnosticResult{}, errors.New("profile not found")
+	}
+	if err := config.ValidateProfile(profile); err != nil {
+		return DiagnosticResult{}, err
+	}
+	result := DiagnosticResult{
+		ProfileID:   profile.ID,
+		ProfileName: profile.Name,
+		LatencyURL:  normalizedTestURL(req.LatencyURL, defaultLatencyURL),
+		SpeedURL:    normalizedTestURL(req.SpeedURL, defaultSpeedURL),
+	}
+
+	resolver := newResolver(cfg.Local)
+	endpoint, err := endpointAddress(profile)
+	if err != nil {
+		result.Errors = append(result.Errors, "endpoint: "+err.Error())
+	} else {
+		resolveCtx, cancel := context.WithTimeout(ctx, diagnosticConnectTimeout)
+		if ips, err := resolver.LookupIP(resolveCtx, endpoint.host); err != nil {
+			result.Errors = append(result.Errors, "resolve: "+err.Error())
+		} else {
+			result.ResolvedIPs = ipStrings(ips)
+		}
+		cancel()
+
+		rttCtx, cancel := context.WithTimeout(ctx, diagnosticConnectTimeout)
+		start := time.Now()
+		conn, err := resolver.DialContext(rttCtx, "tcp", endpoint.address)
+		if err != nil {
+			result.Errors = append(result.Errors, "rtt: "+err.Error())
+		} else {
+			result.RTTMs = millisSince(start)
+			_ = conn.Close()
+		}
+		cancel()
+	}
+
+	latencyClient := e.httpClientViaProfile(profile, cfg.Local, diagnosticHTTPTimeout)
+	if latencyURL := result.LatencyURL; latencyURL != "" {
+		start := time.Now()
+		if err := requestSmall(ctx, latencyClient, latencyURL); err != nil {
+			result.Errors = append(result.Errors, "https_latency: "+err.Error())
+		} else {
+			result.HTTPSMs = millisSince(start)
+		}
+	}
+
+	egressClient := e.httpClientViaProfile(profile, cfg.Local, diagnosticHTTPTimeout)
+	if info, err := fetchEgressInfo(ctx, egressClient); err != nil {
+		result.Errors = append(result.Errors, "egress_ip: "+err.Error())
+	} else {
+		result.EgressIP = info.IP
+		result.ASN = info.ASN
+		result.ASNOrganization = info.ASNOrganization
+		result.ISP = info.ISP
+		result.Country = info.Country
+		result.CountryCode = info.CountryCode
+		result.City = info.City
+		if info.IP != "" {
+			result.PurityURL = purityBaseURL + "?ip=" + url.QueryEscape(info.IP)
+			if purity, err := fetchPuritySummary(ctx, egressClient, result.PurityURL); err != nil {
+				result.Errors = append(result.Errors, "ip_purity: "+err.Error())
+			} else {
+				result.PuritySummary = purity
+			}
+		}
+	}
+
+	speedClient := e.httpClientViaProfile(profile, cfg.Local, diagnosticSpeedTimeout)
+	if speedURL := result.SpeedURL; speedURL != "" {
+		downloaded, elapsed, err := measureDownload(ctx, speedClient, speedURL)
+		if err != nil {
+			result.Errors = append(result.Errors, "speed: "+err.Error())
+		} else {
+			result.DownloadedBytes = downloaded
+			if elapsed > 0 {
+				result.SpeedMbps = float64(downloaded*8) / elapsed.Seconds() / 1_000_000
+			}
+		}
+	}
+	return result, nil
+}
+
+func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile, target proxy.Target, local config.LocalConfig) (io.ReadWriteCloser, error) {
+	raw, err := dialTransport(ctx, profile, local)
 	if err != nil {
 		return nil, err
 	}
@@ -318,22 +458,33 @@ func (e *Engine) watchSOCKS(errCh <-chan error) {
 	e.status = StatusStopped
 }
 
-func dialTransport(ctx context.Context, profile config.Profile) (io.ReadWriteCloser, error) {
+func dialTransport(ctx context.Context, profile config.Profile, local config.LocalConfig) (io.ReadWriteCloser, error) {
+	resolver := newResolver(local)
 	switch config.NormalizeTransport(profile.Transport) {
 	case "tcp":
-		return tcp.Dial(ctx, profile.Endpoint)
+		return resolver.DialContext(ctx, "tcp", profile.Endpoint)
 	case "tls":
-		return tlstransport.Dial(ctx, profile.Endpoint, tlsConfigForEndpoint(profile, profile.Endpoint, true))
+		cfg := tlsConfigForEndpoint(profile, profile.Endpoint, true)
+		conn, err := resolver.DialContext(ctx, "tcp", profile.Endpoint)
+		if err != nil {
+			return nil, err
+		}
+		tlsConn := tls.Client(conn, cfg)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
+		return tlsConn, nil
 	case "websocket":
-		return websocket.Dial(ctx, profile.Endpoint, headers(profile.Headers), tlsConfigForURL(profile, profile.Endpoint, []string{"http/1.1"}))
+		return dialWebSocketTransport(ctx, resolver, profile)
 	case "http-upgrade":
-		return httpupgrade.Dial(ctx, profile.Endpoint, headers(profile.Headers), tlsConfigForURL(profile, profile.Endpoint, []string{"http/1.1"}))
+		return dialHTTPUpgradeTransport(ctx, resolver, profile)
 	case "http-stream":
-		return httpstream.Dial(ctx, httpClient(profile), profile.Endpoint, headers(profile.Headers))
+		return httpstream.Dial(ctx, httpClient(profile, local), profile.Endpoint, headers(profile.Headers))
 	case "grpc":
-		return grpc.Dial(ctx, httpClient(profile), profile.Endpoint, headers(profile.Headers))
+		return grpc.Dial(ctx, httpClient(profile, local), profile.Endpoint, headers(profile.Headers))
 	case "xhttp":
-		return xhttp.Dial(ctx, httpClient(profile), profile.Endpoint, headers(profile.Headers))
+		return xhttp.Dial(ctx, httpClient(profile, local), profile.Endpoint, headers(profile.Headers))
 	default:
 		return nil, fmt.Errorf("unsupported transport %q", profile.Transport)
 	}
@@ -350,12 +501,926 @@ func headers(in map[string]string) http.Header {
 	return out
 }
 
-func httpClient(profile config.Profile) *http.Client {
+func httpClient(profile config.Profile, local config.LocalConfig) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	resolver := newResolver(local)
+	transport.DialContext = resolver.DialContext
 	if tlsCfg := tlsConfigForURL(profile, profile.Endpoint, []string{"h2", "http/1.1"}); tlsCfg != nil {
 		transport.TLSClientConfig = tlsCfg
 	}
 	return &http.Client{Transport: transport}
+}
+
+func dialWebSocketTransport(ctx context.Context, resolver resolver, profile config.Profile) (io.ReadWriteCloser, error) {
+	parsed, err := url.Parse(profile.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dialURLConn(ctx, resolver, parsed, tlsConfigForURL(profile, profile.Endpoint, []string{"http/1.1"}), "ws", "wss")
+	if err != nil {
+		return nil, err
+	}
+	key, err := randomWebSocketKey()
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, profile.Endpoint, nil)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", "websocket")
+	req.Header.Set("Sec-WebSocket-Version", "13")
+	req.Header.Set("Sec-WebSocket-Key", key)
+	for name, values := range headers(profile.Headers) {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
+	if err := req.Write(conn); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, req)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		_ = conn.Close()
+		return nil, fmt.Errorf("unexpected websocket status: %s", resp.Status)
+	}
+	if resp.Header.Get("Sec-WebSocket-Accept") != webSocketAcceptKey(key) {
+		_ = conn.Close()
+		return nil, errors.New("invalid websocket accept key")
+	}
+	return websocket.NewConn(&bufferedNetConn{Conn: conn, Reader: reader}, true), nil
+}
+
+func dialHTTPUpgradeTransport(ctx context.Context, resolver resolver, profile config.Profile) (io.ReadWriteCloser, error) {
+	parsed, err := url.Parse(profile.Endpoint)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := dialURLConn(ctx, resolver, parsed, tlsConfigForURL(profile, profile.Endpoint, []string{"http/1.1"}), "http", "https")
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, profile.Endpoint, nil)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	req.Header.Set("Connection", "Upgrade")
+	req.Header.Set("Upgrade", httpupgrade.DefaultUpgradeName)
+	for name, values := range headers(profile.Headers) {
+		for _, value := range values {
+			req.Header.Add(name, value)
+		}
+	}
+	if err := req.Write(conn); err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	reader := bufio.NewReader(conn)
+	resp, err := http.ReadResponse(reader, req)
+	if err != nil {
+		_ = conn.Close()
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusSwitchingProtocols {
+		_ = conn.Close()
+		return nil, fmt.Errorf("unexpected upgrade status: %s", resp.Status)
+	}
+	if !strings.EqualFold(resp.Header.Get("Upgrade"), httpupgrade.DefaultUpgradeName) {
+		_ = conn.Close()
+		return nil, errors.New("server did not select kless upgrade")
+	}
+	return &bufferedNetConn{Conn: conn, Reader: reader}, nil
+}
+
+func dialURLConn(ctx context.Context, resolver resolver, parsed *url.URL, tlsCfg *tls.Config, plainScheme, tlsScheme string) (net.Conn, error) {
+	address := urlHostPort(parsed)
+	switch parsed.Scheme {
+	case plainScheme:
+		return resolver.DialContext(ctx, "tcp", address)
+	case tlsScheme:
+		conn, err := resolver.DialContext(ctx, "tcp", address)
+		if err != nil {
+			return nil, err
+		}
+		if tlsCfg == nil {
+			tlsCfg = &tls.Config{
+				MinVersion: tls.VersionTLS13,
+				ServerName: parsed.Hostname(),
+				NextProtos: []string{"http/1.1"},
+			}
+		}
+		tlsConn := tls.Client(conn, tlsCfg)
+		if err := tlsConn.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
+		return tlsConn, nil
+	default:
+		return nil, fmt.Errorf("unsupported scheme %q", parsed.Scheme)
+	}
+}
+
+func urlHostPort(u *url.URL) string {
+	if u.Port() != "" {
+		return u.Host
+	}
+	switch u.Scheme {
+	case "https", "wss":
+		return net.JoinHostPort(u.Hostname(), "443")
+	default:
+		return net.JoinHostPort(u.Hostname(), "80")
+	}
+}
+
+func randomWebSocketKey() (string, error) {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(b[:]), nil
+}
+
+func webSocketAcceptKey(key string) string {
+	sum := sha1.Sum([]byte(key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+	return base64.StdEncoding.EncodeToString(sum[:])
+}
+
+type bufferedNetConn struct {
+	net.Conn
+	Reader *bufio.Reader
+}
+
+func (c *bufferedNetConn) Read(p []byte) (int, error) {
+	if c.Reader != nil && c.Reader.Buffered() > 0 {
+		return c.Reader.Read(p)
+	}
+	return c.Conn.Read(p)
+}
+
+func (e *Engine) httpClientViaProfile(profile config.Profile, local config.LocalConfig, timeout time.Duration) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
+		target, err := proxy.ParseTarget(address)
+		if err != nil {
+			return nil, err
+		}
+		rwc, err := e.dialProfileContext(ctx, profile, target, local)
+		if err != nil {
+			return nil, err
+		}
+		conn, ok := rwc.(net.Conn)
+		if !ok {
+			return &netConnAdapter{ReadWriteCloser: rwc}, nil
+		}
+		return conn, nil
+	}
+	return &http.Client{Transport: transport, Timeout: timeout}
+}
+
+type endpointParts struct {
+	host    string
+	port    string
+	address string
+}
+
+func endpointAddress(profile config.Profile) (endpointParts, error) {
+	switch config.NormalizeTransport(profile.Transport) {
+	case "tcp", "tls":
+		host, port, err := net.SplitHostPort(profile.Endpoint)
+		if err != nil {
+			return endpointParts{}, err
+		}
+		return endpointParts{host: host, port: port, address: net.JoinHostPort(host, port)}, nil
+	default:
+		parsed, err := url.Parse(profile.Endpoint)
+		if err != nil {
+			return endpointParts{}, err
+		}
+		host := parsed.Hostname()
+		port := parsed.Port()
+		if host == "" {
+			return endpointParts{}, errors.New("endpoint host is required")
+		}
+		if port == "" {
+			switch parsed.Scheme {
+			case "https", "wss":
+				port = "443"
+			default:
+				port = "80"
+			}
+		}
+		return endpointParts{host: host, port: port, address: net.JoinHostPort(host, port)}, nil
+	}
+}
+
+func normalizedTestURL(value, fallback string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		trimmed = fallback
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fallback
+	}
+	return trimmed
+}
+
+func millisSince(start time.Time) int64 {
+	elapsed := time.Since(start)
+	if elapsed <= 0 {
+		return 1
+	}
+	ms := elapsed.Milliseconds()
+	if ms <= 0 {
+		return 1
+	}
+	return ms
+}
+
+func ipStrings(ips []net.IP) []string {
+	out := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		text := ip.String()
+		if !slices.Contains(out, text) {
+			out = append(out, text)
+		}
+	}
+	return out
+}
+
+func requestSmall(ctx context.Context, client *http.Client, rawURL string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("User-Agent", "krayN/diagnostics")
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	_, _ = io.CopyN(io.Discard, resp.Body, 256*1024)
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+	}
+	return nil
+}
+
+func measureDownload(ctx context.Context, client *http.Client, rawURL string) (int64, time.Duration, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return 0, 0, err
+	}
+	req.Header.Set("User-Agent", "krayN/diagnostics")
+	start := time.Now()
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return 0, 0, fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+	}
+	downloaded, err := io.Copy(io.Discard, io.LimitReader(resp.Body, maxSpeedDownloadBytes))
+	elapsed := time.Since(start)
+	if err != nil {
+		return downloaded, elapsed, err
+	}
+	return downloaded, elapsed, nil
+}
+
+type egressInfo struct {
+	IP              string
+	ASN             int
+	ASNOrganization string
+	ISP             string
+	Country         string
+	CountryCode     string
+	City            string
+}
+
+func fetchEgressInfo(ctx context.Context, client *http.Client) (egressInfo, error) {
+	info, err := fetchIPSB(ctx, client, egressInfoURL)
+	if err == nil && info.IP != "" {
+		return info, nil
+	}
+	fallback, fallbackErr := fetchIPInfo(ctx, client, egressInfoFallbackURL)
+	if fallbackErr == nil && fallback.IP != "" {
+		return fallback, nil
+	}
+	if err != nil {
+		return egressInfo{}, err
+	}
+	return egressInfo{}, fallbackErr
+}
+
+func fetchIPSB(ctx context.Context, client *http.Client, rawURL string) (egressInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return egressInfo{}, err
+	}
+	req.Header.Set("User-Agent", "krayN/diagnostics")
+	resp, err := client.Do(req)
+	if err != nil {
+		return egressInfo{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return egressInfo{}, fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+	}
+	var payload struct {
+		IP              string `json:"ip"`
+		ASN             int    `json:"asn"`
+		ASNOrganization string `json:"asn_organization"`
+		Organization    string `json:"organization"`
+		ISP             string `json:"isp"`
+		Country         string `json:"country"`
+		CountryCode     string `json:"country_code"`
+		City            string `json:"city"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return egressInfo{}, err
+	}
+	return egressInfo{
+		IP:              payload.IP,
+		ASN:             payload.ASN,
+		ASNOrganization: firstNonEmpty(payload.ASNOrganization, payload.Organization),
+		ISP:             firstNonEmpty(payload.ISP, payload.Organization),
+		Country:         payload.Country,
+		CountryCode:     payload.CountryCode,
+		City:            payload.City,
+	}, nil
+}
+
+func fetchIPInfo(ctx context.Context, client *http.Client, rawURL string) (egressInfo, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return egressInfo{}, err
+	}
+	req.Header.Set("User-Agent", "krayN/diagnostics")
+	resp, err := client.Do(req)
+	if err != nil {
+		return egressInfo{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return egressInfo{}, fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+	}
+	var payload struct {
+		IP      string `json:"ip"`
+		Org     string `json:"org"`
+		Country string `json:"country"`
+		City    string `json:"city"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return egressInfo{}, err
+	}
+	asn, org := parseIPInfoOrg(payload.Org)
+	return egressInfo{
+		IP:              payload.IP,
+		ASN:             asn,
+		ASNOrganization: org,
+		ISP:             org,
+		CountryCode:     payload.Country,
+		City:            payload.City,
+	}, nil
+}
+
+func fetchPuritySummary(ctx context.Context, client *http.Client, rawURL string) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("User-Agent", "krayN/diagnostics")
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return "", fmt.Errorf("unexpected HTTP status: %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
+	if err != nil {
+		return "", err
+	}
+	summary := extractPuritySummary(string(body))
+	if summary == "" {
+		return "", errors.New("ping0 summary not found")
+	}
+	return summary, nil
+}
+
+func extractPuritySummary(html string) string {
+	parts := []string{}
+	if risk := extractRiskText(html); risk != "" {
+		parts = append(parts, "Ping0 "+risk)
+	}
+	if native := extractLineLabels(html, "line-nativeip"); len(native) > 0 {
+		parts = append(parts, strings.Join(native, " / "))
+	}
+	if ipTypes := extractLineLabels(html, "line-iptype"); len(ipTypes) > 0 {
+		parts = append(parts, strings.Join(ipTypes, " / "))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func extractRiskText(html string) string {
+	segment := extractSegment(html, "line-risk")
+	if segment == "" {
+		return ""
+	}
+	current := segment
+	if idx := strings.Index(current, "riskcurrent"); idx >= 0 {
+		current = current[idx:]
+	}
+	value := extractBetween(current, `<span class="value">`, "</span>")
+	label := strings.TrimSpace(extractBetween(current, `<span class="lab">`, "</span>"))
+	switch {
+	case value != "" && label != "":
+		return value + " " + label
+	case value != "":
+		return value
+	case label != "":
+		return label
+	default:
+		title := extractBetween(current, `title="`, `"`)
+		if fields := strings.Fields(title); len(fields) > 0 {
+			return strings.Join(fields, " ")
+		}
+		return ""
+	}
+}
+
+func extractLineLabels(html, className string) []string {
+	segment := extractSegment(html, className)
+	if segment == "" {
+		return nil
+	}
+	labels := []string{}
+	remaining := segment
+	for {
+		start := strings.Index(remaining, "<span")
+		if start < 0 {
+			break
+		}
+		remaining = remaining[start:]
+		tagEnd := strings.Index(remaining, ">")
+		if tagEnd < 0 {
+			break
+		}
+		tag := remaining[:tagEnd+1]
+		if strings.Contains(tag, "label") {
+			end := strings.Index(remaining[tagEnd+1:], "</span>")
+			if end < 0 {
+				break
+			}
+			text := cleanHTMLText(remaining[tagEnd+1 : tagEnd+1+end])
+			if text != "" && !slices.Contains(labels, text) {
+				labels = append(labels, text)
+			}
+			remaining = remaining[tagEnd+1+end+len("</span>"):]
+			continue
+		}
+		remaining = remaining[tagEnd+1:]
+	}
+	return labels
+}
+
+func extractSegment(html, className string) string {
+	idx := strings.Index(html, className)
+	if idx < 0 {
+		return ""
+	}
+	end := strings.Index(html[idx+len(className):], `<div class="line `)
+	if end < 0 {
+		end = min(len(html)-idx, 3000)
+	} else {
+		end += len(className)
+	}
+	return html[idx : idx+end]
+}
+
+func extractBetween(text, startMarker, endMarker string) string {
+	start := strings.Index(text, startMarker)
+	if start < 0 {
+		return ""
+	}
+	start += len(startMarker)
+	end := strings.Index(text[start:], endMarker)
+	if end < 0 {
+		return ""
+	}
+	return cleanHTMLText(text[start : start+end])
+}
+
+func cleanHTMLText(text string) string {
+	var out strings.Builder
+	inTag := false
+	for _, r := range text {
+		switch r {
+		case '<':
+			inTag = true
+		case '>':
+			inTag = false
+		default:
+			if !inTag {
+				out.WriteRune(r)
+			}
+		}
+	}
+	cleaned := strings.NewReplacer(
+		"&nbsp;", " ",
+		"&amp;", "&",
+		"&lt;", "<",
+		"&gt;", ">",
+		"&#39;", "'",
+		"&quot;", `"`,
+	).Replace(out.String())
+	return strings.Join(strings.Fields(cleaned), " ")
+}
+
+func parseIPInfoOrg(org string) (int, string) {
+	fields := strings.Fields(org)
+	if len(fields) == 0 {
+		return 0, ""
+	}
+	if strings.HasPrefix(strings.ToUpper(fields[0]), "AS") {
+		var asn int
+		for _, ch := range fields[0][2:] {
+			if ch < '0' || ch > '9' {
+				asn = 0
+				break
+			}
+			asn = asn*10 + int(ch-'0')
+		}
+		return asn, strings.TrimSpace(strings.TrimPrefix(org, fields[0]))
+	}
+	return 0, org
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
+}
+
+type netConnAdapter struct {
+	io.ReadWriteCloser
+}
+
+func (c *netConnAdapter) LocalAddr() net.Addr              { return dummyAddr("krayn-local") }
+func (c *netConnAdapter) RemoteAddr() net.Addr             { return dummyAddr("krayn-remote") }
+func (c *netConnAdapter) SetDeadline(time.Time) error      { return nil }
+func (c *netConnAdapter) SetReadDeadline(time.Time) error  { return nil }
+func (c *netConnAdapter) SetWriteDeadline(time.Time) error { return nil }
+
+type dummyAddr string
+
+func (a dummyAddr) Network() string { return "krayn" }
+func (a dummyAddr) String() string  { return string(a) }
+
+type resolver struct {
+	local config.LocalConfig
+}
+
+func newResolver(local config.LocalConfig) resolver {
+	local.ResolverType = config.NormalizeResolverType(local.ResolverType)
+	local.ResolverAddress = strings.TrimSpace(local.ResolverAddress)
+	return resolver{local: local}
+}
+
+func (r resolver) netDialer() *net.Dialer {
+	return &net.Dialer{Timeout: diagnosticConnectTimeout}
+}
+
+func (r resolver) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || net.ParseIP(host) != nil || config.NormalizeResolverType(r.local.ResolverType) == "system" {
+		var dialer net.Dialer
+		return dialer.DialContext(ctx, network, address)
+	}
+	ips, err := r.LookupIP(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	var lastErr error
+	var dialer net.Dialer
+	for _, ip := range ips {
+		if network == "tcp4" && ip.To4() == nil {
+			continue
+		}
+		if network == "tcp6" && (ip.To16() == nil || ip.To4() != nil) {
+			continue
+		}
+		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
+		if err == nil {
+			return conn, nil
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, lastErr
+	}
+	return nil, fmt.Errorf("no usable IP address for %s", host)
+}
+
+func (r resolver) LookupIP(ctx context.Context, host string) ([]net.IP, error) {
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}, nil
+	}
+	switch config.NormalizeResolverType(r.local.ResolverType) {
+	case "dns":
+		return r.lookupIPViaDNS(ctx, host)
+	case "doh":
+		return r.lookupIPViaDoH(ctx, host)
+	default:
+		resolver := net.DefaultResolver
+		addrs, err := resolver.LookupIPAddr(ctx, host)
+		if err != nil {
+			return nil, err
+		}
+		ips := make([]net.IP, 0, len(addrs))
+		for _, addr := range addrs {
+			ips = append(ips, addr.IP)
+		}
+		return dedupeIPs(ips), nil
+	}
+}
+
+func (r resolver) lookupIPViaDNS(ctx context.Context, host string) ([]net.IP, error) {
+	address := strings.TrimSpace(r.local.ResolverAddress)
+	if address == "" {
+		return nil, errors.New("dns resolver address is empty")
+	}
+	if _, _, err := net.SplitHostPort(address); err != nil {
+		address = net.JoinHostPort(address, "53")
+	}
+	dialer := &net.Dialer{}
+	netResolver := &net.Resolver{
+		PreferGo: true,
+		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return dialer.DialContext(ctx, "udp", address)
+		},
+	}
+	addrs, err := netResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil, err
+	}
+	ips := make([]net.IP, 0, len(addrs))
+	for _, addr := range addrs {
+		ips = append(ips, addr.IP)
+	}
+	return dedupeIPs(ips), nil
+}
+
+func (r resolver) lookupIPViaDoH(ctx context.Context, host string) ([]net.IP, error) {
+	endpoint := strings.TrimSpace(r.local.ResolverAddress)
+	if endpoint == "" {
+		return nil, errors.New("doh resolver url is empty")
+	}
+	a, errA := queryDoH(ctx, endpoint, host, dnsTypeA)
+	aaaa, errAAAA := queryDoH(ctx, endpoint, host, dnsTypeAAAA)
+	ips := dedupeIPs(append(a, aaaa...))
+	if len(ips) > 0 {
+		return ips, nil
+	}
+	if errA != nil {
+		return nil, errA
+	}
+	if errAAAA != nil {
+		return nil, errAAAA
+	}
+	return nil, fmt.Errorf("no IP address found for %s", host)
+}
+
+func dedupeIPs(ips []net.IP) []net.IP {
+	out := make([]net.IP, 0, len(ips))
+	seen := map[string]struct{}{}
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		text := ip.String()
+		if _, ok := seen[text]; ok {
+			continue
+		}
+		seen[text] = struct{}{}
+		out = append(out, ip)
+	}
+	return out
+}
+
+const (
+	dnsTypeA    uint16 = 1
+	dnsTypeAAAA uint16 = 28
+)
+
+func queryDoH(ctx context.Context, endpoint, host string, qtype uint16) ([]net.IP, error) {
+	if ips, err := queryDoHJSON(ctx, endpoint, host, qtype); err == nil && len(ips) > 0 {
+		return ips, nil
+	}
+	return queryDoHWire(ctx, endpoint, host, qtype)
+}
+
+func queryDoHJSON(ctx context.Context, endpoint, host string, qtype uint16) ([]net.IP, error) {
+	parsed, err := url.Parse(endpoint)
+	if err != nil {
+		return nil, err
+	}
+	query := parsed.Query()
+	query.Set("name", host)
+	query.Set("type", dnsTypeName(qtype))
+	parsed.RawQuery = query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/dns-json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("doh json status: %s", resp.Status)
+	}
+	var payload struct {
+		Status int `json:"Status"`
+		Answer []struct {
+			Type uint16 `json:"type"`
+			Data string `json:"data"`
+		} `json:"Answer"`
+	}
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<20)).Decode(&payload); err != nil {
+		return nil, err
+	}
+	if payload.Status != 0 {
+		return nil, fmt.Errorf("doh json status code %d", payload.Status)
+	}
+	ips := make([]net.IP, 0, len(payload.Answer))
+	for _, answer := range payload.Answer {
+		if answer.Type != qtype {
+			continue
+		}
+		if ip := net.ParseIP(answer.Data); ip != nil {
+			ips = append(ips, ip)
+		}
+	}
+	return dedupeIPs(ips), nil
+}
+
+func queryDoHWire(ctx context.Context, endpoint, host string, qtype uint16) ([]net.IP, error) {
+	raw, err := buildDNSQuery(host, qtype)
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(string(raw)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/dns-message")
+	req.Header.Set("Content-Type", "application/dns-message")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("doh status: %s", resp.Status)
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return nil, err
+	}
+	return parseDNSResponse(body, qtype)
+}
+
+func dnsTypeName(qtype uint16) string {
+	switch qtype {
+	case dnsTypeAAAA:
+		return "AAAA"
+	default:
+		return "A"
+	}
+}
+
+func buildDNSQuery(host string, qtype uint16) ([]byte, error) {
+	var id [2]byte
+	if _, err := rand.Read(id[:]); err != nil {
+		return nil, err
+	}
+	buf := make([]byte, 12, 512)
+	copy(buf[0:2], id[:])
+	buf[2] = 0x01
+	buf[5] = 0x01
+	for _, label := range strings.Split(strings.TrimSuffix(host, "."), ".") {
+		if label == "" || len(label) > 63 {
+			return nil, fmt.Errorf("invalid dns label %q", label)
+		}
+		buf = append(buf, byte(len(label)))
+		buf = append(buf, label...)
+	}
+	buf = append(buf, 0)
+	var tail [4]byte
+	binary.BigEndian.PutUint16(tail[0:2], qtype)
+	binary.BigEndian.PutUint16(tail[2:4], 1)
+	buf = append(buf, tail[:]...)
+	return buf, nil
+}
+
+func parseDNSResponse(body []byte, qtype uint16) ([]net.IP, error) {
+	if len(body) < 12 {
+		return nil, errors.New("short dns response")
+	}
+	qdCount := int(binary.BigEndian.Uint16(body[4:6]))
+	anCount := int(binary.BigEndian.Uint16(body[6:8]))
+	offset := 12
+	var err error
+	for i := 0; i < qdCount; i++ {
+		offset, err = skipDNSName(body, offset)
+		if err != nil {
+			return nil, err
+		}
+		offset += 4
+		if offset > len(body) {
+			return nil, errors.New("truncated dns question")
+		}
+	}
+	ips := make([]net.IP, 0, anCount)
+	for i := 0; i < anCount; i++ {
+		offset, err = skipDNSName(body, offset)
+		if err != nil {
+			return nil, err
+		}
+		if offset+10 > len(body) {
+			return nil, errors.New("truncated dns answer")
+		}
+		answerType := binary.BigEndian.Uint16(body[offset : offset+2])
+		answerClass := binary.BigEndian.Uint16(body[offset+2 : offset+4])
+		rdLength := int(binary.BigEndian.Uint16(body[offset+8 : offset+10]))
+		offset += 10
+		if offset+rdLength > len(body) {
+			return nil, errors.New("truncated dns rdata")
+		}
+		if answerClass == 1 && answerType == qtype {
+			switch qtype {
+			case dnsTypeA:
+				if rdLength == net.IPv4len {
+					ips = append(ips, net.IP(body[offset:offset+rdLength]).To4())
+				}
+			case dnsTypeAAAA:
+				if rdLength == net.IPv6len {
+					ips = append(ips, append(net.IP(nil), body[offset:offset+rdLength]...))
+				}
+			}
+		}
+		offset += rdLength
+	}
+	return dedupeIPs(ips), nil
+}
+
+func skipDNSName(body []byte, offset int) (int, error) {
+	for {
+		if offset >= len(body) {
+			return 0, errors.New("truncated dns name")
+		}
+		length := int(body[offset])
+		offset++
+		if length == 0 {
+			return offset, nil
+		}
+		if length&0xc0 == 0xc0 {
+			if offset >= len(body) {
+				return 0, errors.New("truncated dns pointer")
+			}
+			return offset + 1, nil
+		}
+		if length&0xc0 != 0 {
+			return 0, errors.New("unsupported dns label")
+		}
+		offset += length
+		if offset > len(body) {
+			return 0, errors.New("truncated dns label")
+		}
+	}
 }
 
 func tlsConfigForURL(profile config.Profile, rawURL string, nextProtos []string) *tls.Config {

@@ -5,6 +5,8 @@ class LocalConfig {
     this.allowLan = false,
     this.mode = 'rule',
     this.systemProxyMode = 'unchanged',
+    this.resolverType = 'system',
+    this.resolverAddress = '',
   });
 
   final String apiAddress;
@@ -12,6 +14,8 @@ class LocalConfig {
   final bool allowLan;
   final String mode;
   final String systemProxyMode;
+  final String resolverType;
+  final String resolverAddress;
 
   factory LocalConfig.fromJson(Map<String, dynamic> json) {
     return LocalConfig(
@@ -20,6 +24,8 @@ class LocalConfig {
       allowLan: json['allow_lan'] as bool? ?? false,
       mode: json['mode'] as String? ?? 'rule',
       systemProxyMode: json['system_proxy_mode'] as String? ?? 'unchanged',
+      resolverType: json['resolver_type'] as String? ?? 'system',
+      resolverAddress: json['resolver_address'] as String? ?? '',
     );
   }
 
@@ -30,6 +36,8 @@ class LocalConfig {
       'allow_lan': allowLan,
       'mode': mode,
       'system_proxy_mode': systemProxyMode,
+      'resolver_type': resolverType,
+      'resolver_address': resolverAddress,
     };
   }
 
@@ -39,6 +47,8 @@ class LocalConfig {
     bool? allowLan,
     String? mode,
     String? systemProxyMode,
+    String? resolverType,
+    String? resolverAddress,
   }) {
     return LocalConfig(
       apiAddress: apiAddress ?? this.apiAddress,
@@ -46,6 +56,8 @@ class LocalConfig {
       allowLan: allowLan ?? this.allowLan,
       mode: mode ?? this.mode,
       systemProxyMode: systemProxyMode ?? this.systemProxyMode,
+      resolverType: resolverType ?? this.resolverType,
+      resolverAddress: resolverAddress ?? this.resolverAddress,
     );
   }
 }

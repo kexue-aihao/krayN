@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -45,6 +46,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux.HandleFunc("PUT /profiles/{id}", s.handleUpsertProfile)
 	mux.HandleFunc("DELETE /profiles/{id}", s.handleDeleteProfile)
 	mux.HandleFunc("POST /profiles/{id}/activate", s.handleActivateProfile)
+	mux.HandleFunc("POST /profiles/{id}/diagnostics", s.handleProfileDiagnostics)
 
 	s.httpServer = &http.Server{
 		Addr:              s.Address,
@@ -190,6 +192,24 @@ func (s *Server) handleActivateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, s.Engine.State())
+}
+
+func (s *Server) handleProfileDiagnostics(w http.ResponseWriter, r *http.Request) {
+	var req engine.DiagnosticRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			writeError(w, http.StatusBadRequest, err)
+			return
+		}
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 75*time.Second)
+	defer cancel()
+	result, err := s.Engine.TestProfile(ctx, r.PathValue("id"), req)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func writeJSON(w http.ResponseWriter, status int, value any) {

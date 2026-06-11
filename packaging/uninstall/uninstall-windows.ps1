@@ -9,18 +9,26 @@ param(
 $ErrorActionPreference = "Stop"
 $isChinese = [System.Globalization.CultureInfo]::CurrentUICulture.Name -like "zh*"
 
+function U([int[]]$CodePoints) {
+    $chars = foreach ($point in $CodePoints) {
+        [char]$point
+    }
+    -join $chars
+}
+
 $messages = if ($isChinese) {
     @{
-        Title = "krayN 完整卸载"
-        Stop = "正在停止 krayN 进程..."
-        Shortcuts = "正在删除快捷方式..."
-        Data = "正在删除用户配置和缓存..."
-        Install = "正在删除安装目录..."
-        Keep = "已按要求保留用户配置。"
-        Done = "krayN 已完整卸载。"
-        Skip = "跳过路径：{0}"
-        Remove = "删除：{0}"
-        Warn = "警告：{0}"
+        Title = (U @(0x006B, 0x0072, 0x0061, 0x0079, 0x004E, 0x0020, 0x5B8C, 0x6574, 0x5378, 0x8F7D))
+        Stop = (U @(0x6B63, 0x5728, 0x505C, 0x6B62, 0x0020, 0x006B, 0x0072, 0x0061, 0x0079, 0x004E, 0x0020, 0x8FDB, 0x7A0B, 0x002E, 0x002E, 0x002E))
+        Shortcuts = (U @(0x6B63, 0x5728, 0x5220, 0x9664, 0x5FEB, 0x6377, 0x65B9, 0x5F0F, 0x002E, 0x002E, 0x002E))
+        Data = (U @(0x6B63, 0x5728, 0x5220, 0x9664, 0x7528, 0x6237, 0x914D, 0x7F6E, 0x548C, 0x7F13, 0x5B58, 0x002E, 0x002E, 0x002E))
+        InstallFiles = (U @(0x6B63, 0x5728, 0x6E05, 0x7406, 0x5B89, 0x88C5, 0x6587, 0x4EF6, 0x002E, 0x002E, 0x002E))
+        Install = (U @(0x6B63, 0x5728, 0x5220, 0x9664, 0x5B89, 0x88C5, 0x76EE, 0x5F55, 0x002E, 0x002E, 0x002E))
+        Keep = (U @(0x5DF2, 0x6309, 0x8981, 0x6C42, 0x4FDD, 0x7559, 0x7528, 0x6237, 0x914D, 0x7F6E, 0x3002))
+        Done = (U @(0x006B, 0x0072, 0x0061, 0x0079, 0x004E, 0x0020, 0x5DF2, 0x5B8C, 0x6574, 0x5378, 0x8F7D, 0x3002))
+        Skip = (U @(0x8DF3, 0x8FC7, 0x8DEF, 0x5F84, 0xFF1A, 0x007B, 0x0030, 0x007D))
+        Remove = (U @(0x5220, 0x9664, 0xFF1A, 0x007B, 0x0030, 0x007D))
+        Warn = (U @(0x8B66, 0x544A, 0xFF1A, 0x007B, 0x0030, 0x007D))
     }
 }
 else {
@@ -29,6 +37,7 @@ else {
         Stop = "Stopping krayN processes..."
         Shortcuts = "Removing shortcuts..."
         Data = "Removing user configuration and cache..."
+        InstallFiles = "Removing installed files..."
         Install = "Removing install directory..."
         Keep = "User profiles were kept as requested."
         Done = "krayN has been completely uninstalled."
@@ -82,7 +91,8 @@ function Test-IsSafeInstallDir([string]$Path) {
     $markers = @(
         (Join-Path $resolved "krayn.exe"),
         (Join-Path $resolved "krayn-core.exe"),
-        (Join-Path $resolved "unins000.exe")
+        (Join-Path $resolved "unins000.exe"),
+        (Join-Path $resolved "uninstall-krayN.ps1")
     )
     foreach ($marker in $markers) {
         if (Test-Path -LiteralPath $marker) {
@@ -90,6 +100,46 @@ function Test-IsSafeInstallDir([string]$Path) {
         }
     }
     return $false
+}
+
+function Get-CandidateInstallDirs {
+    $candidateDirs = @()
+    if (-not [string]::IsNullOrWhiteSpace($InstallDir)) {
+        $candidateDirs += $InstallDir
+    }
+    if ($PSScriptRoot -and (Test-Path -LiteralPath $PSScriptRoot)) {
+        $candidateDirs += $PSScriptRoot
+    }
+    if ($env:ProgramFiles) {
+        $candidateDirs += (Join-Path $env:ProgramFiles "krayN")
+    }
+    $programFilesX86 = [Environment]::GetEnvironmentVariable("ProgramFiles(x86)")
+    if ($programFilesX86) {
+        $candidateDirs += (Join-Path $programFilesX86 "krayN")
+    }
+    $candidateDirs | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique
+}
+
+function Clear-InstallDirContents([string]$Path) {
+    if (-not (Test-IsSafeInstallDir $Path)) {
+        if (-not [string]::IsNullOrWhiteSpace($Path)) {
+            Write-Localized ($messages.Skip -f $Path)
+        }
+        return
+    }
+    $items = @(
+        "krayn.exe",
+        "krayn-core.exe",
+        "flutter_windows.dll",
+        "screen_retriever_windows_plugin.dll",
+        "tray_manager_plugin.dll",
+        "window_manager_plugin.dll",
+        "uninstall-krayN.ps1",
+        "data"
+    )
+    foreach ($item in $items) {
+        Remove-PathIfExists (Join-Path $Path $item)
+    }
 }
 
 Write-Localized $messages.Title
@@ -129,18 +179,15 @@ else {
     }
 }
 
+Write-Localized $messages.InstallFiles
+foreach ($dir in Get-CandidateInstallDirs) {
+    Clear-InstallDirContents $dir
+}
+
 if (-not $SkipInstallDir) {
     Write-Localized $messages.Install
-    $candidateDirs = @()
-    if (-not [string]::IsNullOrWhiteSpace($InstallDir)) {
-        $candidateDirs += $InstallDir
-    }
-    $candidateDirs += @(
-        (Join-Path $env:ProgramFiles "krayN"),
-        (Join-Path ${env:ProgramFiles(x86)} "krayN")
-    )
-    foreach ($dir in $candidateDirs | Select-Object -Unique) {
-        if (Test-IsSafeInstallDir $dir) {
+    foreach ($dir in Get-CandidateInstallDirs) {
+        if (Test-IsSafeInstallDir $dir -or (Test-Path -LiteralPath $dir)) {
             Remove-PathIfExists $dir
         }
         elseif (-not [string]::IsNullOrWhiteSpace($dir)) {

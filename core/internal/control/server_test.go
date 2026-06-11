@@ -40,3 +40,35 @@ func TestProxyPACUsesConfiguredSOCKSAddress(t *testing.T) {
 		t.Fatalf("content type mismatch: %s", rec.Header().Get("Content-Type"))
 	}
 }
+
+func TestProfileDiagnosticsRejectsMalformedBody(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	cfg := config.Default()
+	profile := config.UpsertProfile(&cfg, config.Profile{
+		Name:            "local relay",
+		Transport:       "tcp",
+		Endpoint:        "127.0.0.1:9000",
+		ClientID:        "demo",
+		ClientSecret:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		ServerPublicKey: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	})
+	cfg.ActiveProfileID = profile.ID
+	if err := config.Save(path, cfg); err != nil {
+		t.Fatal(err)
+	}
+	appEngine, err := engine.New(path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &Server{Engine: appEngine}
+	req := httptest.NewRequest(http.MethodPost, "/profiles/"+profile.ID+"/diagnostics", strings.NewReader("{bad"))
+	req.SetPathValue("id", profile.ID)
+	rec := httptest.NewRecorder()
+
+	server.handleProfileDiagnostics(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status mismatch: got %d", rec.Code)
+	}
+}

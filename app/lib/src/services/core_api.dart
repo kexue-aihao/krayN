@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/diagnostic_result.dart';
 import '../models/local_config.dart';
 import '../models/profile.dart';
 import '../models/runtime_state.dart';
@@ -52,6 +53,23 @@ class CoreApi {
     return RuntimeState.fromJson(json as Map<String, dynamic>);
   }
 
+  Future<DiagnosticResult> runDiagnostics(
+    String id, {
+    required String latencyUrl,
+    required String speedUrl,
+  }) async {
+    final json = await _sendJson(
+      'POST',
+      '/profiles/$id/diagnostics',
+      {
+        'latency_url': latencyUrl,
+        'speed_url': speedUrl,
+      },
+      timeout: const Duration(seconds: 90),
+    );
+    return DiagnosticResult.fromJson(json as Map<String, dynamic>);
+  }
+
   Future<RuntimeState> start() async {
     final json = await _sendJson('POST', '/start', null);
     return RuntimeState.fromJson(json as Map<String, dynamic>);
@@ -68,19 +86,17 @@ class CoreApi {
     return _decode(response);
   }
 
-  Future<dynamic> _sendJson(
-    String method,
-    String path,
-    Object? body,
-  ) async {
+  Future<dynamic> _sendJson(String method, String path, Object? body,
+      {Duration? timeout}) async {
     final uri = Uri.parse('$baseUrl$path');
     final request = http.Request(method, uri);
     request.headers['Content-Type'] = 'application/json; charset=utf-8';
     if (body != null) {
       request.body = jsonEncode(body);
     }
-    final streamed =
-        await _client.send(request).timeout(const Duration(seconds: 8));
+    final streamed = await _client
+        .send(request)
+        .timeout(timeout ?? const Duration(seconds: 8));
     final response = await http.Response.fromStream(streamed);
     return _decode(response);
   }

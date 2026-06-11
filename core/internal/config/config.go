@@ -30,6 +30,8 @@ type LocalConfig struct {
 	AllowLAN        bool   `json:"allow_lan"`
 	Mode            string `json:"mode"`
 	SystemProxyMode string `json:"system_proxy_mode,omitempty"`
+	ResolverType    string `json:"resolver_type,omitempty"`
+	ResolverAddress string `json:"resolver_address,omitempty"`
 }
 
 type Profile struct {
@@ -64,6 +66,7 @@ func Default() AppConfig {
 			SOCKSAddress:    "127.0.0.1:7890",
 			Mode:            "rule",
 			SystemProxyMode: "unchanged",
+			ResolverType:    "system",
 		},
 		AutoStart: false,
 		Profiles:  []Profile{},
@@ -139,6 +142,8 @@ func Normalize(cfg *AppConfig) {
 	}
 	cfg.Local.Mode = NormalizeMode(cfg.Local.Mode)
 	cfg.Local.SystemProxyMode = NormalizeSystemProxyMode(cfg.Local.SystemProxyMode)
+	cfg.Local.ResolverType = NormalizeResolverType(cfg.Local.ResolverType)
+	cfg.Local.ResolverAddress = strings.TrimSpace(cfg.Local.ResolverAddress)
 	for i := range cfg.Profiles {
 		if cfg.Profiles[i].ID == "" {
 			cfg.Profiles[i].ID = NewID()
@@ -171,12 +176,28 @@ func NormalizeSystemProxyMode(mode string) string {
 	}
 }
 
+func NormalizeResolverType(resolverType string) string {
+	switch strings.ToLower(strings.TrimSpace(resolverType)) {
+	case "", "system":
+		return "system"
+	case "dns", "udp":
+		return "dns"
+	case "doh", "https":
+		return "doh"
+	default:
+		return "system"
+	}
+}
+
 func Validate(cfg AppConfig) error {
 	if err := validateListenAddress(cfg.Local.APIAddress); err != nil {
 		return fmt.Errorf("api address: %w", err)
 	}
 	if err := validateListenAddress(cfg.Local.SOCKSAddress); err != nil {
 		return fmt.Errorf("socks address: %w", err)
+	}
+	if err := ValidateResolver(cfg.Local); err != nil {
+		return err
 	}
 	ids := make(map[string]struct{}, len(cfg.Profiles))
 	for _, profile := range cfg.Profiles {
@@ -191,6 +212,33 @@ func Validate(cfg AppConfig) error {
 	if cfg.ActiveProfileID != "" {
 		if _, ok := ids[cfg.ActiveProfileID]; !ok {
 			return fmt.Errorf("active profile %q does not exist", cfg.ActiveProfileID)
+		}
+	}
+	return nil
+}
+
+func ValidateResolver(local LocalConfig) error {
+	resolverType := NormalizeResolverType(local.ResolverType)
+	address := strings.TrimSpace(local.ResolverAddress)
+	switch resolverType {
+	case "system":
+		return nil
+	case "dns":
+		if address == "" {
+			return errors.New("dns resolver address is required")
+		}
+		if _, _, err := net.SplitHostPort(address); err != nil {
+			address = net.JoinHostPort(address, "53")
+		}
+		if _, _, err := net.SplitHostPort(address); err != nil {
+			return fmt.Errorf("dns resolver address: %w", err)
+		}
+	case "doh":
+		if address == "" {
+			return errors.New("doh resolver url is required")
+		}
+		if !strings.HasPrefix(strings.ToLower(address), "https://") {
+			return errors.New("doh resolver url must start with https://")
 		}
 	}
 	return nil

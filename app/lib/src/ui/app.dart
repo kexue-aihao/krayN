@@ -18,6 +18,7 @@ import '../services/desktop_tray.dart';
 import '../services/subscription_importer.dart';
 import '../services/system_proxy.dart';
 import 'brand/krayn_logo_mark.dart';
+import 'diagnostics_panel.dart';
 import 'profile_editor.dart';
 import 'widgets/status_panel.dart';
 
@@ -429,12 +430,32 @@ class _DashboardPageState extends State<DashboardPage> {
                           ),
                           const SizedBox(width: 16),
                           Expanded(
-                            child: ProfileEditor(
-                              key: ValueKey(_draft.id),
-                              initialProfile: _draft,
-                              busy: _busy,
-                              onSave: _save,
-                              onDelete: _delete,
+                            child: Column(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: ProfileEditor(
+                                    key: ValueKey(_draft.id),
+                                    initialProfile: _draft,
+                                    busy: _busy,
+                                    onSave: _save,
+                                    onDelete: _delete,
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Expanded(
+                                  flex: 2,
+                                  child: DiagnosticsPanel(
+                                    key: ValueKey('diagnostics-${_draft.id}'),
+                                    api: widget.api,
+                                    profile: _draft,
+                                    busy: _busy,
+                                    onMessage: _showMessage,
+                                    onError: (message) =>
+                                        setState(() => _error = message),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -464,6 +485,19 @@ class _DashboardPageState extends State<DashboardPage> {
                               busy: _busy,
                               onSave: _save,
                               onDelete: _delete,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            height: 760,
+                            child: DiagnosticsPanel(
+                              key: ValueKey('diagnostics-${_draft.id}'),
+                              api: widget.api,
+                              profile: _draft,
+                              busy: _busy,
+                              onMessage: _showMessage,
+                              onError: (message) =>
+                                  setState(() => _error = message),
                             ),
                           ),
                         ],
