@@ -122,9 +122,9 @@ func (s *Server) handleProxyPAC(w http.ResponseWriter, r *http.Request) {
       shExpMatch(host, "172.31.*")) {
     return "DIRECT";
   }
-  return "SOCKS5 %s:%s; SOCKS %s:%s; DIRECT";
+  return "PROXY %s:%s; SOCKS5 %s:%s; SOCKS %s:%s; DIRECT";
 }
-`, host, port, host, port)
+`, host, port, host, port, host, port)
 }
 
 func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {

@@ -11,7 +11,7 @@ import (
 	"krayn/core/internal/engine"
 )
 
-func TestProxyPACUsesConfiguredSOCKSAddress(t *testing.T) {
+func TestProxyPACUsesConfiguredMixedProxyAddress(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 	cfg := config.Default()
@@ -33,8 +33,11 @@ func TestProxyPACUsesConfiguredSOCKSAddress(t *testing.T) {
 		t.Fatalf("status mismatch: got %d", rec.Code)
 	}
 	body := rec.Body.String()
+	if !strings.Contains(body, "PROXY 127.0.0.1:7899") {
+		t.Fatalf("PAC body does not contain configured HTTP proxy address: %s", body)
+	}
 	if !strings.Contains(body, "SOCKS5 127.0.0.1:7899") {
-		t.Fatalf("PAC body does not contain configured SOCKS address: %s", body)
+		t.Fatalf("PAC body does not contain configured SOCKS fallback address: %s", body)
 	}
 	if !strings.Contains(rec.Header().Get("Content-Type"), "application/x-ns-proxy-autoconfig") {
 		t.Fatalf("content type mismatch: %s", rec.Header().Get("Content-Type"))

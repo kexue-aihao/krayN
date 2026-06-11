@@ -68,6 +68,8 @@ class SystemProxy {
     }
     if (Platform.isMacOS) {
       for (final service in await _macNetworkServices()) {
+        await _run('networksetup', ['-setwebproxystate', service, 'off']);
+        await _run('networksetup', ['-setsecurewebproxystate', service, 'off']);
         await _run(
             'networksetup', ['-setsocksfirewallproxystate', service, 'off']);
         await _run('networksetup', ['-setautoproxystate', service, 'off']);
@@ -102,7 +104,7 @@ class SystemProxy {
         '/t',
         'REG_SZ',
         '/d',
-        'socks=${endpoint.host}:${endpoint.port}',
+        'http=${endpoint.host}:${endpoint.port};https=${endpoint.host}:${endpoint.port};socks=${endpoint.host}:${endpoint.port}',
         '/f',
       ]);
       await _run(
@@ -120,6 +122,20 @@ class SystemProxy {
     }
     if (Platform.isMacOS) {
       for (final service in await _macNetworkServices()) {
+        await _run('networksetup', [
+          '-setwebproxy',
+          service,
+          endpoint.host,
+          endpoint.port,
+        ]);
+        await _run('networksetup', ['-setwebproxystate', service, 'on']);
+        await _run('networksetup', [
+          '-setsecurewebproxy',
+          service,
+          endpoint.host,
+          endpoint.port,
+        ]);
+        await _run('networksetup', ['-setsecurewebproxystate', service, 'on']);
         await _run('networksetup', [
           '-setsocksfirewallproxy',
           service,
@@ -139,6 +155,14 @@ class SystemProxy {
           ['set', 'org.gnome.system.proxy.socks', 'host', endpoint.host]);
       await _run('gsettings',
           ['set', 'org.gnome.system.proxy.socks', 'port', endpoint.port]);
+      await _run('gsettings',
+          ['set', 'org.gnome.system.proxy.http', 'host', endpoint.host]);
+      await _run('gsettings',
+          ['set', 'org.gnome.system.proxy.http', 'port', endpoint.port]);
+      await _run('gsettings',
+          ['set', 'org.gnome.system.proxy.https', 'host', endpoint.host]);
+      await _run('gsettings',
+          ['set', 'org.gnome.system.proxy.https', 'port', endpoint.port]);
     }
   }
 
@@ -173,6 +197,8 @@ class SystemProxy {
       for (final service in await _macNetworkServices()) {
         await _run('networksetup', ['-setautoproxyurl', service, pacUrl]);
         await _run('networksetup', ['-setautoproxystate', service, 'on']);
+        await _run('networksetup', ['-setwebproxystate', service, 'off']);
+        await _run('networksetup', ['-setsecurewebproxystate', service, 'off']);
         await _run(
             'networksetup', ['-setsocksfirewallproxystate', service, 'off']);
       }

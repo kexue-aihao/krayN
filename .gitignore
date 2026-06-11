@@ -1,4 +1,5 @@
 .dart_tool/
+.cache/
 .flutter-plugins
 .flutter-plugins-dependencies
 .idea/
@@ -22,4 +23,3 @@ dist/
 core/krayn-core
 core/krayn-core.exe
 core/config.local.json
-
