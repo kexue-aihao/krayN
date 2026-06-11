@@ -289,13 +289,14 @@ jobs:
           SolidCompression=yes
           CloseApplications=no
           RestartApplications=no
-          SetupWindowTitle=krayN 版本 $version 安装程序
           ShowLanguageDialog=no
           UsePreviousLanguage=no
           UninstallDisplayName=krayN 卸载程序
           UninstallDisplayIcon={app}\krayN.exe
           [Languages]
           Name: "chinese"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+          [Messages]
+          SetupWindowTitle=krayN 版本 $version 安装程序
           [Tasks]
           Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
           [InstallDelete]
