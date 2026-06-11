@@ -267,11 +267,38 @@ jobs:
             return Find-Iscc
           }
 
+          function Resolve-InnoLanguageFile {
+            param([string]$IsccPath)
+
+            $compilerDir = Split-Path -Parent $IsccPath
+            $installedLanguageFile = Join-Path $compilerDir "Languages\ChineseSimplified.isl"
+            if (Test-Path $installedLanguageFile) {
+              return $installedLanguageFile
+            }
+
+            $downloadedLanguageFile = Join-Path $env:RUNNER_TEMP "ChineseSimplified.isl"
+            try {
+              Invoke-WebRequest `
+                -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/is-6_7_3/Files/Languages/Unofficial/ChineseSimplified.isl" `
+                -OutFile $downloadedLanguageFile
+              if (Test-Path $downloadedLanguageFile) {
+                return $downloadedLanguageFile
+              }
+            } catch {
+              Write-Warning "Chinese Inno Setup language file download failed: $($_.Exception.Message)"
+            }
+
+            Write-Warning "Chinese Inno Setup language file was not found; using built-in Default.isl with krayN Chinese overrides."
+            return "compiler:Default.isl"
+          }
+
           $iscc = Try-Install-InnoSetup
           if (-not $iscc) {
             throw "ISCC.exe was not found after installing Inno Setup."
           }
           Write-Host "Using Inno Setup compiler: $iscc"
+          $languageMessagesFile = Resolve-InnoLanguageFile -IsccPath $iscc
+          Write-Host "Using Inno Setup language file: $languageMessagesFile"
 
           $version = "${{ needs.prepare.outputs.version }}"
           $stage = "dist\stage\krayN-$version-windows-${{ matrix.arch }}"
@@ -294,9 +321,12 @@ jobs:
           UninstallDisplayName=krayN 卸载程序
           UninstallDisplayIcon={app}\krayN.exe
           [Languages]
-          Name: "chinese"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+          Name: "chinese"; MessagesFile: "$languageMessagesFile"
           [Messages]
           SetupWindowTitle=krayN 版本 $version 安装程序
+          [CustomMessages]
+          chinese.CreateDesktopIcon=创建桌面图标
+          chinese.AdditionalIcons=附加图标
           [Tasks]
           Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
           [InstallDelete]
