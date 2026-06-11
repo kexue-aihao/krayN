@@ -662,12 +662,6 @@ class _ProfileList extends StatelessWidget {
                   child: Text(l.nodes, style: theme.textTheme.titleLarge),
                 ),
                 IconButton.filledTonal(
-                  tooltip: l.importSubscription,
-                  onPressed: onImport,
-                  icon: const Icon(Icons.download_for_offline_outlined),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filledTonal(
                   tooltip: l.addNode,
                   onPressed: onAdd,
                   icon: const Icon(Icons.add),
@@ -675,9 +669,31 @@ class _ProfileList extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: onImport,
+                icon: const Icon(Icons.link),
+                label: Text(l.importSubscription),
+              ),
+            ),
+            const SizedBox(height: 12),
             Expanded(
               child: profiles.isEmpty
-                  ? Center(child: Text(l.noNodes))
+                  ? Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(l.noNodes),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: onImport,
+                            icon: const Icon(Icons.link),
+                            label: Text(l.importSubscription),
+                          ),
+                        ],
+                      ),
+                    )
                   : ListView.separated(
                       itemBuilder: (context, index) {
                         final profile = profiles[index];

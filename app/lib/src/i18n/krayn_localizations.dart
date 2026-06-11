@@ -132,7 +132,7 @@ const _zhValues = {
   'close': '关闭',
   'nodes': '节点',
   'addNode': '添加节点',
-  'importSubscription': '导入订阅',
+  'importSubscription': '添加订阅',
   'subscriptionUrl': '订阅链接',
   'subscriptionUrlHint': '粘贴以 http:// 或 https:// 开头的订阅链接',
   'subscriptionImportHelp': '支持 krayN 原生订阅配置和 base64 包裹的配置。',
@@ -190,7 +190,7 @@ const _enValues = {
   'close': 'Close',
   'nodes': 'Nodes',
   'addNode': 'Add node',
-  'importSubscription': 'Import subscription',
+  'importSubscription': 'Add subscription',
   'subscriptionUrl': 'Subscription URL',
   'subscriptionUrlHint':
       'Paste a subscription URL starting with http:// or https://',
