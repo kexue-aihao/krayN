@@ -3,6 +3,7 @@ namespace ServiceLib.Handler;
 public static class ConnectionHandler
 {
     private static readonly string _tag = "ConnectionHandler";
+    public static string? LastRealPingError { get; private set; }
 
     /// <summary>
     /// Runs ping and IP checks and returns a formatted result string.
@@ -70,6 +71,7 @@ public static class ConnectionHandler
     {
         var url = AppManager.Instance.Config.SpeedTestItem.SpeedPingTestUrl;
         var responseTime = -1;
+        LastRealPingError = null;
         try
         {
             using var cts = new CancellationTokenSource();
@@ -91,8 +93,10 @@ public static class ConnectionHandler
             }
             responseTime = oneTime.Where(x => x > 0).OrderBy(x => x).FirstOrDefault();
         }
-        catch
+        catch (Exception ex)
         {
+            LastRealPingError = ex.Message;
+            Logging.SaveLog(_tag, ex);
         }
         return responseTime;
     }

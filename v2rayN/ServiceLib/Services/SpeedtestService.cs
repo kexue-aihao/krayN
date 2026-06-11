@@ -5,6 +5,7 @@ namespace ServiceLib.Services;
 public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateFunc)
 {
     private static readonly string _tag = "SpeedtestService";
+    private static string RealPingFailed => ResUI.OperationFailed;
     private readonly Config? _config = config;
     private readonly Func<SpeedTestResult, Task>? _updateFunc = updateFunc;
     private static readonly ConcurrentBag<string> _lstExitLoop = [];
@@ -243,6 +244,11 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         catch (Exception ex)
         {
             Logging.SaveLog(_tag, ex);
+            foreach (var it in selecteds)
+            {
+                await UpdateFunc(it.IndexId, RealPingFailed);
+            }
+            return false;
         }
         finally
         {
@@ -377,13 +383,14 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
                         }
                         else
                         {
-                            await UpdateFunc(it.IndexId, "", ResUI.SpeedtestingSkip);
+                            await UpdateFunc(it.IndexId, "", RealPingFailed);
                         }
                     }
                 }
                 catch (Exception ex)
                 {
                     Logging.SaveLog(_tag, ex);
+                    await UpdateFunc(it.IndexId, RealPingFailed, ex.Message);
                 }
                 finally
                 {
@@ -404,7 +411,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         var responseTime = await ConnectionHandler.GetRealPingTime(webProxy, 10);
 
         ProfileExManager.Instance.SetTestDelay(it.IndexId, responseTime);
-        await UpdateFunc(it.IndexId, responseTime.ToString());
+        await UpdateFunc(it.IndexId, responseTime > 0 ? responseTime.ToString() : RealPingFailed);
 
         if (responseTime > 0)
         {
@@ -415,7 +422,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         }
         else
         {
-            await UpdateIpInfoFunc(it.IndexId, ResUI.SpeedtestingSkip);
+            await UpdateIpInfoFunc(it.IndexId, ConnectionHandler.LastRealPingError ?? RealPingFailed);
         }
 
         return responseTime;

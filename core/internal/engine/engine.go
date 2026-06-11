@@ -412,25 +412,25 @@ func (e *Engine) TestProfile(ctx context.Context, profileID string, req Diagnost
 func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile, target proxy.Target, local config.LocalConfig) (io.ReadWriteCloser, error) {
 	raw, err := dialTransport(ctx, profile, local)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("dial kless transport: %w", err)
 	}
 	target, err = resolveProxyTarget(ctx, target, newResolver(local))
 	if err != nil {
 		_ = raw.Close()
-		return nil, err
+		return nil, fmt.Errorf("resolve proxy target: %w", err)
 	}
 	secure, err := e.clientHandshake(raw, profile)
 	if err != nil {
 		_ = raw.Close()
-		return nil, err
+		return nil, fmt.Errorf("kless handshake: %w", err)
 	}
 	if err := proxy.WriteConnectRequest(secure, target); err != nil {
 		_ = secure.Close()
-		return nil, err
+		return nil, fmt.Errorf("relay connect request: %w", err)
 	}
 	if err := proxy.ReadConnectResponse(secure); err != nil {
 		_ = secure.Close()
-		return nil, err
+		return nil, fmt.Errorf("relay connect response: %w", err)
 	}
 	return secure, nil
 }
