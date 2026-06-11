@@ -289,12 +289,13 @@ jobs:
           SolidCompression=yes
           CloseApplications=no
           RestartApplications=no
-          ShowLanguageDialog=auto
+          SetupWindowTitle=krayN 版本 $version 安装程序
+          ShowLanguageDialog=no
           UsePreviousLanguage=no
-          UninstallDisplayName=krayN
+          UninstallDisplayName=krayN 卸载程序
           UninstallDisplayIcon={app}\krayN.exe
           [Languages]
-          Name: "english"; MessagesFile: "compiler:Default.isl"
+          Name: "chinese"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
           [Tasks]
           Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
           [InstallDelete]
@@ -308,7 +309,7 @@ jobs:
           Source: "$stage\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
           Name: "{group}\krayN"; Filename: "{app}\krayN.exe"
-          Name: "{group}\Uninstall krayN"; Filename: "{uninstallexe}"
+          Name: "{group}\卸载 krayN"; Filename: "{uninstallexe}"
           Name: "{commondesktop}\krayN"; Filename: "{app}\krayN.exe"; Tasks: desktopicon
           [UninstallRun]
           Filename: "{app}\krayn-uninstall.exe"; Parameters: "--all-users --skip-install-dir --silent"; Flags: runhidden waituntilterminated; RunOnceId: "krayNCompleteCleanup"
