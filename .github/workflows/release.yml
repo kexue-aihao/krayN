@@ -201,12 +201,83 @@ jobs:
         if: matrix.arch == 'amd64'
         shell: pwsh
         run: |
-          choco install innosetup -y --no-progress
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+
+          function Find-Iscc {
+            $cmd = Get-Command iscc -ErrorAction SilentlyContinue
+            if ($cmd) {
+              return $cmd.Source
+            }
+
+            $candidates = @(
+              "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+              "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+              "$env:RUNNER_TEMP\InnoSetup6\ISCC.exe"
+            )
+            foreach ($candidate in $candidates) {
+              if ($candidate -and (Test-Path $candidate)) {
+                return $candidate
+              }
+            }
+
+            return $null
+          }
+
+          function Try-Install-InnoSetup {
+            $iscc = Find-Iscc
+            if ($iscc) {
+              return $iscc
+            }
+
+            if (Get-Command choco -ErrorAction SilentlyContinue) {
+              try {
+                choco install innosetup -y --no-progress
+              } catch {
+                Write-Warning "Chocolatey Inno Setup install failed: $($_.Exception.Message)"
+              }
+              $iscc = Find-Iscc
+              if ($iscc) {
+                return $iscc
+              }
+            }
+
+            if (Get-Command winget -ErrorAction SilentlyContinue) {
+              try {
+                winget install --id JRSoftware.InnoSetup -e -s winget --silent --accept-package-agreements --accept-source-agreements
+              } catch {
+                Write-Warning "winget Inno Setup install failed: $($_.Exception.Message)"
+              }
+              $iscc = Find-Iscc
+              if ($iscc) {
+                return $iscc
+              }
+            }
+
+            $installer = Join-Path $env:RUNNER_TEMP "innosetup-6.7.3.exe"
+            $installDir = Join-Path $env:RUNNER_TEMP "InnoSetup6"
+            Invoke-WebRequest `
+              -Uri "https://github.com/jrsoftware/issrc/releases/download/is-6_7_3/innosetup-6.7.3.exe" `
+              -OutFile $installer
+            Start-Process `
+              -FilePath $installer `
+              -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/DIR=$installDir" `
+              -Wait
+
+            return Find-Iscc
+          }
+
+          $iscc = Try-Install-InnoSetup
+          if (-not $iscc) {
+            throw "ISCC.exe was not found after installing Inno Setup."
+          }
+          Write-Host "Using Inno Setup compiler: $iscc"
+
           $version = "${{ needs.prepare.outputs.version }}"
           $stage = "dist\stage\krayN-$version-windows-${{ matrix.arch }}"
           $iss = @"
           [Setup]
-          AppId={{io.krayn.krayN}}
+          AppId=io.krayn.krayN
           AppName=krayN
           AppVersion=$version
           AppPublisher=krayN
@@ -281,7 +352,15 @@ jobs:
           end;
           "@
           Set-Content -Path installer.iss -Value $iss -Encoding UTF8
-          iscc installer.iss
+          & $iscc installer.iss
+          if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+          }
+
+          $setup = "dist\release\krayN-$version-windows-amd64-setup.exe"
+          if (-not (Test-Path $setup)) {
+            throw "Inno Setup finished without producing $setup"
+          }
 
       - uses: actions/upload-artifact@v4
         with:
