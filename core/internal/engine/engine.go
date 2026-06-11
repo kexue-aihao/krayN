@@ -431,11 +431,11 @@ func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile,
 }
 
 func (e *Engine) clientHandshake(raw io.ReadWriteCloser, profile config.Profile) (*kless.Conn, error) {
-	secret, err := kless.DecodeKey(profile.ClientSecret)
+	secret, err := decodeKLESSKey(profile.ClientSecret)
 	if err != nil {
 		return nil, fmt.Errorf("decode client secret: %w", err)
 	}
-	publicKey, err := kless.DecodeKey(profile.ServerPublicKey)
+	publicKey, err := decodeKLESSKey(profile.ServerPublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("decode server public key: %w", err)
 	}
@@ -450,6 +450,28 @@ func (e *Engine) clientHandshake(raw io.ReadWriteCloser, profile config.Profile)
 		PaddingMin:       profile.HandshakePadding.Min,
 		PaddingMax:       profile.HandshakePadding.Max,
 	})
+}
+
+func decodeKLESSKey(text string) ([]byte, error) {
+	normalized := strings.TrimSpace(text)
+	if normalized == "" {
+		return nil, base64.CorruptInputError(0)
+	}
+	encodings := []*base64.Encoding{
+		base64.RawStdEncoding,
+		base64.StdEncoding,
+		base64.RawURLEncoding,
+		base64.URLEncoding,
+	}
+	var lastErr error
+	for _, encoding := range encodings {
+		key, err := encoding.DecodeString(normalized)
+		if err == nil {
+			return key, nil
+		}
+		lastErr = err
+	}
+	return nil, lastErr
 }
 
 func (e *Engine) watchSOCKS(errCh <-chan error) {

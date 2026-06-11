@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"io"
 	"net"
 	"testing"
@@ -79,6 +80,75 @@ func TestDialContextOverKLESS(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(got, []byte("ping")) {
+		t.Fatalf("got %q", string(got))
+	}
+}
+
+func TestDialContextAcceptsURLSafeKLESSKeys(t *testing.T) {
+	serverPublic, serverPrivate, err := kless.GenerateServerIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientSecret, err := kless.GenerateClientSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	targetListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer targetListener.Close()
+	go func() {
+		conn, err := targetListener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = io.Copy(conn, conn)
+	}()
+
+	klessListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer klessListener.Close()
+	go serveRelay(t, klessListener, serverPrivate, clientSecret)
+
+	cfg := config.Default()
+	profile := config.UpsertProfile(&cfg, config.Profile{
+		Name:            "test",
+		Transport:       "tcp",
+		Endpoint:        klessListener.Addr().String(),
+		ClientID:        "test-client",
+		ClientSecret:    base64.RawURLEncoding.EncodeToString(clientSecret),
+		ServerPublicKey: base64.URLEncoding.EncodeToString(serverPublic),
+	})
+	cfg.ActiveProfileID = profile.ID
+	appEngine := &Engine{
+		cfg:    cfg,
+		stats:  nil,
+		status: StatusStopped,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	target, err := proxy.ParseTarget(targetListener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := appEngine.DialContext(ctx, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	if _, err := conn.Write([]byte("pong")); err != nil {
+		t.Fatal(err)
+	}
+	got := make([]byte, 4)
+	if _, err := io.ReadFull(conn, got); err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, []byte("pong")) {
 		t.Fatalf("got %q", string(got))
 	}
 }
