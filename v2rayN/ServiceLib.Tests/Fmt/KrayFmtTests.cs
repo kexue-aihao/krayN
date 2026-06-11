@@ -41,8 +41,8 @@ public class KrayFmtTests
               "name": "hk-01",
               "endpoint": "kray.example:8443",
               "client_id": "client-1",
-              "client_secret": "secret-1",
-              "server_public_key": "public-key-1",
+              "client_secret": "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE",
+              "server_public_key": "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY",
               "transport": "http-upgrade",
               "server_name": "edge.example",
               "headers": {"Host":"edge.example"},
@@ -65,5 +65,39 @@ public class KrayFmtTests
         item.Port.Should().Be(8443);
         item.Network.Should().Be("http-upgrade");
         item.GetProtocolExtra().KrayHeaders.Should().Contain("Host");
+    }
+
+    [Fact]
+    public void ResolveJsonSubscription_ShouldAcceptServerSigningKeyAlias()
+    {
+        const string payload = """
+        {
+          "profiles": [
+            {
+              "name": "jp-01",
+              "endpoint": "kray.example:8443",
+              "client_id": "client-1",
+              "client_secret": "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE",
+              "server_signing_key": "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY"
+            }
+          ]
+        }
+        """;
+
+        var items = KrayFmt.ResolveJsonSubscription(payload, "sub");
+
+        items.Should().NotBeNull();
+        items![0].PublicKey.Should().Be("YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY");
+    }
+
+    [Fact]
+    public void ResolveShareUri_ShouldAcceptServerSigningKeyAlias()
+    {
+        const string uri = "kray://client-1@kray.example:8443?client_secret=MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE&server_signing_key=YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY#jp-01";
+
+        var item = FmtHandler.ResolveConfig(uri, out var msg);
+
+        item.Should().NotBeNull($"msg: {msg}");
+        item!.PublicKey.Should().Be("YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY");
     }
 }

@@ -43,6 +43,7 @@ type Profile struct {
 	ClientID         string            `json:"client_id"`
 	ClientSecret     string            `json:"client_secret"`
 	ServerPublicKey  string            `json:"server_public_key"`
+	ServerSigningKey string            `json:"server_signing_key,omitempty"`
 	ServerName       string            `json:"server_name,omitempty"`
 	SkipTLSVerify    bool              `json:"skip_tls_verify,omitempty"`
 	Headers          map[string]string `json:"headers,omitempty"`
@@ -147,6 +148,12 @@ func Normalize(cfg *AppConfig) {
 	for i := range cfg.Profiles {
 		if cfg.Profiles[i].ID == "" {
 			cfg.Profiles[i].ID = NewID()
+		}
+		if strings.TrimSpace(cfg.Profiles[i].ServerPublicKey) == "" {
+			cfg.Profiles[i].ServerPublicKey = cfg.Profiles[i].ServerSigningKey
+		}
+		if strings.TrimSpace(cfg.Profiles[i].ServerSigningKey) == "" {
+			cfg.Profiles[i].ServerSigningKey = cfg.Profiles[i].ServerPublicKey
 		}
 		cfg.Profiles[i].Transport = NormalizeTransport(cfg.Profiles[i].Transport)
 		if cfg.Profiles[i].UpdatedAt.IsZero() {

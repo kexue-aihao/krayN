@@ -567,7 +567,15 @@ public class MainWindowViewModel : MyReactiveObject
             var profileItem = await ConfigHandler.GetDefaultServer(_config);
             if (profileItem == null)
             {
-                NoticeManager.Instance.Enqueue(ResUI.CheckServerSettings);
+                var profiles = await AppManager.Instance.ProfileItems(string.Empty);
+                var msg = profiles is { Count: > 0 }
+                    ? ResUI.CheckServerSettings
+                    : ResUI.PleaseAddAtLeastOneServer;
+                NoticeManager.Instance.SendMessageEx(msg);
+                if (profiles is { Count: > 0 })
+                {
+                    NoticeManager.Instance.Enqueue(msg);
+                }
                 return;
             }
             var allResult = await CoreConfigContextBuilder.BuildAll(_config, profileItem);

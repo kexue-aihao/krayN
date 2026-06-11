@@ -30,6 +30,7 @@ public class CoreConfigKrayServiceTests
         profile["client_id"]!.GetValue<string>().Should().Be(node.Username);
         profile["client_secret"]!.GetValue<string>().Should().Be(node.Password);
         profile["server_public_key"]!.GetValue<string>().Should().Be(node.PublicKey);
+        profile["server_signing_key"]!.GetValue<string>().Should().Be(node.PublicKey);
         profile["headers"]!["Host"]!.GetValue<string>().Should().Be("edge.example");
         profile["handshake_padding"]!["min"]!.GetValue<int>().Should().Be(8);
         profile["handshake_padding"]!["max"]!.GetValue<int>().Should().Be(32);

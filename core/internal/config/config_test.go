@@ -1,6 +1,7 @@
 package config
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -67,6 +68,45 @@ func TestNormalizeLocalModes(t *testing.T) {
 	}
 	if cfg.Local.ResolverType != "system" {
 		t.Fatalf("invalid resolver type should default to system, got %q", cfg.Local.ResolverType)
+	}
+}
+
+func TestLoadAcceptsServerSigningKeyAlias(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+	raw := []byte(`{
+  "version": 1,
+  "local": {
+    "api_address": "127.0.0.1:9727",
+    "socks_address": "127.0.0.1:7890",
+    "mode": "rule"
+  },
+  "active_profile_id": "p1",
+  "profiles": [
+    {
+      "id": "p1",
+      "name": "alias",
+      "transport": "tcp",
+      "endpoint": "127.0.0.1:9000",
+      "client_id": "client-1",
+      "client_secret": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "server_signing_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  ]
+}`)
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Profiles[0].ServerPublicKey; got != "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" {
+		t.Fatalf("server public key alias mismatch: got %q", got)
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("alias config should validate: %v", err)
 	}
 }
 

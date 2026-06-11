@@ -22,7 +22,7 @@ func (f dialerFunc) DialContext(ctx context.Context, target Target) (io.ReadWrit
 func TestReadSOCKSRequestStillSupportsSOCKS5(t *testing.T) {
 	var raw bytes.Buffer
 	raw.Write([]byte{5, 1, 0})
-	raw.Write([]byte{5, 1, 0, addrDomain, byte(len("example.com"))})
+	raw.Write([]byte{5, 1, 0, socksAddrDomain, byte(len("example.com"))})
 	raw.WriteString("example.com")
 	raw.Write([]byte{0x01, 0xbb})
 	var reply bytes.Buffer

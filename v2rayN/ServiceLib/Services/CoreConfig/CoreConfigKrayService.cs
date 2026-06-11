@@ -20,6 +20,7 @@ public class CoreConfigKrayService(CoreConfigContext context)
                 ["client_id"] = _node.Username,
                 ["client_secret"] = _node.Password,
                 ["server_public_key"] = _node.PublicKey,
+                ["server_signing_key"] = _node.PublicKey,
                 ["server_name"] = _node.Sni,
                 ["skip_tls_verify"] = _node.GetAllowInsecure(),
             };

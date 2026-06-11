@@ -12,6 +12,9 @@ public record NodeValidatorResult(List<string> Errors, List<string> Warnings)
 
 public class NodeValidator
 {
+    private const int KlessMinClientSecretBytes = 32;
+    private const int KlessServerSigningKeyBytes = 32;
+
     // Static validator rules
     private static readonly HashSet<string> SingboxUnsupportedTransports =
         [nameof(ETransport.kcp), nameof(ETransport.xhttp)];
@@ -84,6 +87,7 @@ public class NodeValidator
                 v.Assert(!item.Username.IsNullOrEmpty(), string.Format(ResUI.MsgInvalidProperty, "ClientId"));
                 v.Assert(!item.Password.IsNullOrEmpty(), string.Format(ResUI.MsgInvalidProperty, "ClientSecret"));
                 v.Assert(!item.PublicKey.IsNullOrEmpty(), string.Format(ResUI.MsgInvalidProperty, "ServerPublicKey"));
+                ValidateKlessKeyMaterial(item, v);
                 break;
 
             case EConfigType.VMess:
@@ -175,6 +179,59 @@ public class NodeValidator
                 v.Error(string.Format(ResUI.MsgInvalidProperty, "Finalmask"));
             }
         }
+    }
+
+    private static void ValidateKlessKeyMaterial(ProfileItem item, ValidationContext v)
+    {
+        var clientSecret = DecodeKlessKey(item.Password);
+        if (clientSecret is null || clientSecret.Length < KlessMinClientSecretBytes)
+        {
+            v.Error("KLESS client_secret must be base64/base64url and decode to at least 32 bytes.");
+        }
+
+        var serverSigningKey = DecodeKlessKey(item.PublicKey);
+        if (serverSigningKey is null || serverSigningKey.Length != KlessServerSigningKeyBytes)
+        {
+            v.Error("KLESS server_public_key/server_signing_key must be base64/base64url and decode to exactly 32 bytes.");
+        }
+
+        if (clientSecret is { Length: > 0 }
+            && serverSigningKey is { Length: > 0 }
+            && clientSecret.SequenceEqual(serverSigningKey))
+        {
+            v.Error("KLESS client_secret must not be the same value as server_public_key/server_signing_key. Please use the per-client secret issued by the server.");
+        }
+    }
+
+    private static byte[]? DecodeKlessKey(string? text)
+    {
+        var normalized = new string((text ?? string.Empty)
+            .Trim()
+            .Where(c => !char.IsWhiteSpace(c))
+            .ToArray());
+        if (normalized.IsNullOrEmpty())
+        {
+            return null;
+        }
+
+        var candidates = new[]
+        {
+            normalized,
+            normalized.Replace('-', '+').Replace('_', '/'),
+        };
+        foreach (var candidate in candidates)
+        {
+            var padded = candidate.PadRight(candidate.Length + (4 - candidate.Length % 4) % 4, '=');
+            try
+            {
+                return Convert.FromBase64String(padded);
+            }
+            catch
+            {
+                // Try the next alphabet/padding variant.
+            }
+        }
+        return null;
     }
 
     private static string? ValidateSingboxTransport(EConfigType configType, string net)

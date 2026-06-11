@@ -18,6 +18,12 @@ import (
 	"krayn/core/internal/stats"
 )
 
+const (
+	socksAddrIPv4   byte = 1
+	socksAddrDomain byte = 3
+	socksAddrIPv6   byte = 4
+)
+
 type Dialer interface {
 	DialContext(ctx context.Context, target Target) (io.ReadWriteCloser, error)
 }
@@ -194,19 +200,19 @@ func readSOCKSRequest(r io.Reader, w io.Writer) (Target, error) {
 	}
 	var host string
 	switch req[3] {
-	case addrIPv4:
+	case socksAddrIPv4:
 		var raw [4]byte
 		if _, err := io.ReadFull(r, raw[:]); err != nil {
 			return Target{}, err
 		}
 		host = net.IP(raw[:]).String()
-	case addrIPv6:
+	case socksAddrIPv6:
 		var raw [16]byte
 		if _, err := io.ReadFull(r, raw[:]); err != nil {
 			return Target{}, err
 		}
 		host = net.IP(raw[:]).String()
-	case addrDomain:
+	case socksAddrDomain:
 		var size [1]byte
 		if _, err := io.ReadFull(r, size[:]); err != nil {
 			return Target{}, err
@@ -230,7 +236,7 @@ func readSOCKSRequest(r io.Reader, w io.Writer) (Target, error) {
 }
 
 func writeSOCKSReply(w io.Writer, status byte) error {
-	_, err := w.Write([]byte{5, status, 0, addrIPv4, 0, 0, 0, 0, 0, 0})
+	_, err := w.Write([]byte{5, status, 0, socksAddrIPv4, 0, 0, 0, 0, 0, 0})
 	return err
 }
 

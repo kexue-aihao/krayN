@@ -296,8 +296,11 @@ public class StatusBarViewModel : MyReactiveObject
         }
         else
         {
+            var profiles = await AppManager.Instance.ProfileItems(string.Empty);
             RunningServerDisplay =
-                RunningServerToolTipText = ResUI.CheckServerSettings;
+                RunningServerToolTipText = profiles is { Count: > 0 }
+                    ? ResUI.CheckServerSettings
+                    : ResUI.PleaseAddAtLeastOneServer;
         }
     }
 

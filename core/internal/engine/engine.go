@@ -422,6 +422,9 @@ func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile,
 	secure, err := e.clientHandshake(raw, profile)
 	if err != nil {
 		_ = raw.Close()
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return nil, fmt.Errorf("kless handshake: server closed the connection before handshake completed; check client_id, client_secret, server_public_key/server_signing_key, transport, and server relay mode: %w", err)
+		}
 		return nil, fmt.Errorf("kless handshake: %w", err)
 	}
 	if err := proxy.WriteConnectRequest(secure, target); err != nil {

@@ -30,8 +30,8 @@ public class ConfigHandlerKrayTests
               "name": "hk-01",
               "endpoint": "kray.example:8443",
               "client_id": "client-1",
-              "client_secret": "secret-1",
-              "server_public_key": "public-key-1",
+              "client_secret": "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE",
+              "server_public_key": "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY",
               "transport": "websocket",
               "server_name": "edge.example"
             }
