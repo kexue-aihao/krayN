@@ -153,6 +153,35 @@ func TestDialContextAcceptsURLSafeKLESSKeys(t *testing.T) {
 	}
 }
 
+func TestDecodeKLESSKeyAcceptsWhitespaceAndURLSafeEncoding(t *testing.T) {
+	original := []byte("0123456789abcdef0123456789abcdef")
+	cases := []struct {
+		name string
+		text string
+	}{
+		{
+			name: "raw_std",
+			text: "  " + base64.RawStdEncoding.EncodeToString(original) + "\n",
+		},
+		{
+			name: "raw_url",
+			text: "\t" + base64.RawURLEncoding.EncodeToString(original) + "\r\n",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := decodeKLESSKey(tc.text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(got, original) {
+				t.Fatalf("got %q", string(got))
+			}
+		})
+	}
+}
+
 func serveRelay(t *testing.T, listener net.Listener, private ed25519.PrivateKey, clientSecret []byte) {
 	t.Helper()
 	raw, err := listener.Accept()

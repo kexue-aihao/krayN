@@ -453,7 +453,14 @@ func (e *Engine) clientHandshake(raw io.ReadWriteCloser, profile config.Profile)
 }
 
 func decodeKLESSKey(text string) ([]byte, error) {
-	normalized := strings.TrimSpace(text)
+	normalized := strings.Map(func(r rune) rune {
+		switch r {
+		case ' ', '\t', '\n', '\r':
+			return -1
+		default:
+			return r
+		}
+	}, strings.TrimSpace(text))
 	if normalized == "" {
 		return nil, base64.CorruptInputError(0)
 	}
