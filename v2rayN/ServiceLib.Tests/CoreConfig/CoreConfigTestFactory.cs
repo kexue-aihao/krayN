@@ -135,7 +135,7 @@ internal static class CoreConfigTestFactory
         var node = new ProfileItem
         {
             IndexId = indexId,
-            ConfigType = EConfigType.Kray,
+            ConfigType = EConfigType.KLESS,
             CoreType = ECoreType.kray,
             Remarks = remarks,
             Address = "kray.example",

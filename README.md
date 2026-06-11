@@ -18,14 +18,14 @@ krayN 是一个基于 [2dust/v2rayN](https://github.com/2dust/v2rayN) 桌面客�
 ### 已接入能力
 
 - 支持 `kray://` 节点 URI 导入和导出。
-- 支持 Kray JSON 订阅导入，包括 `profiles`、`nodes`、`profile` 和单节点对象。
-- v2rayN 节点模型中新增 `Kray` 协议和 `kray` 核心类型。
+- 支持 KLESS / kray JSON 订阅导入，包括 `profiles`、`nodes`、`profile` 和单节点对象。
+- v2rayN 节点模型中新增 `KLESS` 协议和 `kray` 核心类型。
 - 启动代理时会生成 krayN 原生配置，并自动启动 `krayn-core`。
 - 发布包会内置 `bin/kray/krayn-core(.exe)`，符合 v2rayN 的核心查找规则。
 - 默认界面语言为中文。
-- Windows 发布包包含 `krayn-uninstall.exe`，卸载时会清理应用、配置、缓存和内置 Kray 核心。
+- Windows 发布包包含 `krayn-uninstall.exe`，卸载时会清理应用、配置、缓存和内置 kray 核心。
 
-### Kray 订阅格式
+### KLESS 订阅格式
 
 URI 示例：
 
@@ -150,8 +150,8 @@ The project has moved from the earlier custom Flutter/Go client into a “v2rayN
 ### Highlights
 
 - Imports and exports `kray://` node URIs.
-- Imports Kray JSON subscriptions from `profiles`, `nodes`, `profile`, or a single object.
-- Adds `Kray` protocol and `kray` core type to the v2rayN model.
+- Imports KLESS / kray JSON subscriptions from `profiles`, `nodes`, `profile`, or a single object.
+- Adds the `KLESS` protocol and `kray` core type to the v2rayN model.
 - Generates native krayN core config and starts `krayn-core` automatically.
 - Bundles the core at `bin/kray/krayn-core(.exe)`, matching v2rayN core discovery.
 - Defaults the UI language to Chinese.

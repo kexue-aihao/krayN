@@ -121,6 +121,14 @@ public static class CoreConfigHandler
         {
             result = new CoreConfigV2rayService(context).GenerateClientSpeedtestConfig(selecteds);
         }
+        else if (coreType == ECoreType.kray && selecteds.Count == 1)
+        {
+            var testItem = selecteds[0];
+            var port = Utils.GetFreePort(AppManager.Instance.GetLocalPort(EInboundProtocol.speedtest) + testItem.QueueNum);
+            var apiPort = Utils.GetFreePort(AppManager.Instance.GetLocalPort(EInboundProtocol.api) + testItem.QueueNum + 1);
+            testItem.Port = port;
+            result = new CoreConfigKrayService(context with { Node = testItem.Profile }).GenerateClientConfigContent(port, apiPort);
+        }
         if (result.Success != true)
         {
             return result;
@@ -134,11 +142,16 @@ public static class CoreConfigHandler
         var result = new RetResult();
         var initPort = AppManager.Instance.GetLocalPort(EInboundProtocol.speedtest);
         var port = Utils.GetFreePort(initPort + testItem.QueueNum);
+        var apiPort = Utils.GetFreePort(AppManager.Instance.GetLocalPort(EInboundProtocol.api) + testItem.QueueNum + 1);
         testItem.Port = port;
 
         if (context.RunCoreType == ECoreType.sing_box)
         {
             result = new CoreConfigSingboxService(context).GenerateClientSpeedtestConfig(port);
+        }
+        else if (context.RunCoreType == ECoreType.kray)
+        {
+            result = new CoreConfigKrayService(context).GenerateClientConfigContent(port, apiPort);
         }
         else
         {

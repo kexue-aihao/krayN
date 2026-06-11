@@ -113,6 +113,7 @@ public class OptionSettingViewModel : MyReactiveObject
     [Reactive] public string CoreType6 { get; set; }
     [Reactive] public string CoreType7 { get; set; }
     [Reactive] public string CoreType9 { get; set; }
+    [Reactive] public string CoreType13 { get; set; }
 
     #endregion CoreType
 
@@ -248,7 +249,7 @@ public class OptionSettingViewModel : MyReactiveObject
             _config.CoreTypeItem.Add(new CoreTypeItem()
             {
                 ConfigType = it,
-                CoreType = ECoreType.Xray
+                CoreType = it == EConfigType.KLESS ? ECoreType.kray : ECoreType.Xray
             });
         }
         _config.CoreTypeItem.ForEach(it =>
@@ -286,6 +287,11 @@ public class OptionSettingViewModel : MyReactiveObject
 
                 case 9:
                     CoreType9 = type;
+                    break;
+
+                case 13:
+                    it.CoreType = ECoreType.kray;
+                    CoreType13 = it.CoreType.ToString();
                     break;
             }
         });
@@ -450,6 +456,10 @@ public class OptionSettingViewModel : MyReactiveObject
 
                 case 9:
                     type = CoreType9;
+                    break;
+
+                case 13:
+                    type = ECoreType.kray.ToString();
                     break;
 
                 default:

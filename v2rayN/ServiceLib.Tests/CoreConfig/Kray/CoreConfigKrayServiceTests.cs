@@ -34,4 +34,20 @@ public class CoreConfigKrayServiceTests
         profile["handshake_padding"]!["min"]!.GetValue<int>().Should().Be(8);
         profile["handshake_padding"]!["max"]!.GetValue<int>().Should().Be(32);
     }
+
+    [Fact]
+    public void GenerateClientConfigContent_WithSpeedtestPorts_ShouldUseDedicatedLocalListeners()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.kray);
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+        var node = CoreConfigTestFactory.CreateKrayNode();
+        var context = CoreConfigTestFactory.CreateContext(config, node, ECoreType.kray);
+
+        var result = new CoreConfigKrayService(context).GenerateClientConfigContent(11223, 19727);
+
+        result.Success.Should().BeTrue($"ret msg: {result.Msg}");
+        var root = JsonUtils.ParseJson(result.Data!.ToString())!.AsObject();
+        root["local"]!["socks_address"]!.GetValue<string>().Should().Be("127.0.0.1:11223");
+        root["local"]!["api_address"]!.GetValue<string>().Should().Be("127.0.0.1:19727");
+    }
 }

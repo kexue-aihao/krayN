@@ -232,7 +232,7 @@ public class Global
         { EConfigType.WireGuard, "wireguard://" },
         { EConfigType.Anytls, "anytls://" },
         { EConfigType.Naive, "naive://" },
-        { EConfigType.Kray, KrayProtocolShare }
+        { EConfigType.KLESS, KrayProtocolShare }
     };
 
     public static readonly Dictionary<EConfigType, string> ProtocolTypes = new()
@@ -248,7 +248,7 @@ public class Global
         { EConfigType.WireGuard, "wireguard" },
         { EConfigType.Anytls, "anytls" },
         { EConfigType.Naive, "naive" },
-        { EConfigType.Kray, "kray" }
+        { EConfigType.KLESS, "kray" }
     };
 
     public static readonly List<string> VmessSecurities =
@@ -382,7 +382,7 @@ public class Global
 
     public static readonly HashSet<EConfigType> KraySupportConfigType =
     [
-        EConfigType.Kray
+        EConfigType.KLESS
     ];
 
     public static readonly List<string> DomainStrategies =

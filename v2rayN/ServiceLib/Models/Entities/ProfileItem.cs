@@ -78,7 +78,7 @@ public class ProfileItem
 
         switch (ConfigType)
         {
-            case EConfigType.Kray:
+            case EConfigType.KLESS:
                 if (Username.IsNullOrEmpty() || Password.IsNullOrEmpty() || PublicKey.IsNullOrEmpty())
                 {
                     return false;

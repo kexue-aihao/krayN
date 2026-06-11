@@ -80,7 +80,7 @@ public class NodeValidator
         var protocolExtra = item.GetProtocolExtra();
         switch (item.ConfigType)
         {
-            case EConfigType.Kray:
+            case EConfigType.KLESS:
                 v.Assert(!item.Username.IsNullOrEmpty(), string.Format(ResUI.MsgInvalidProperty, "ClientId"));
                 v.Assert(!item.Password.IsNullOrEmpty(), string.Format(ResUI.MsgInvalidProperty, "ClientSecret"));
                 v.Assert(!item.PublicKey.IsNullOrEmpty(), string.Format(ResUI.MsgInvalidProperty, "ServerPublicKey"));

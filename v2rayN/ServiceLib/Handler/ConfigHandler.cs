@@ -271,7 +271,7 @@ public static class ConfigHandler
             EConfigType.WireGuard => await AddWireguardServer(config, item),
             EConfigType.Anytls => await AddAnytlsServer(config, item),
             EConfigType.Naive => await AddNaiveServer(config, item),
-            EConfigType.Kray => await AddKrayServer(config, item),
+            EConfigType.KLESS => await AddKrayServer(config, item),
             _ => -1,
         };
         return ret;
@@ -888,7 +888,7 @@ public static class ConfigHandler
 
     public static async Task<int> AddKrayServer(Config config, ProfileItem profileItem, bool toFile = true)
     {
-        profileItem.ConfigType = EConfigType.Kray;
+        profileItem.ConfigType = EConfigType.KLESS;
         profileItem.CoreType = ECoreType.kray;
         profileItem.Address = profileItem.Address.TrimEx();
         profileItem.Username = profileItem.Username.TrimEx();
@@ -1134,7 +1134,7 @@ public static class ConfigHandler
             }
         }
 
-        if (profileItem.ConfigType != EConfigType.Kray
+        if (profileItem.ConfigType != EConfigType.KLESS
             && profileItem.Network.IsNotEmpty()
             && !Global.Networks.Contains(profileItem.Network))
         {
@@ -1602,7 +1602,7 @@ public static class ConfigHandler
                 EConfigType.WireGuard => await AddWireguardServer(config, profileItem, false),
                 EConfigType.Anytls => await AddAnytlsServer(config, profileItem, false),
                 EConfigType.Naive => await AddNaiveServer(config, profileItem, false),
-                EConfigType.Kray => await AddKrayServer(config, profileItem, false),
+                EConfigType.KLESS => await AddKrayServer(config, profileItem, false),
                 _ => -1,
             };
 
@@ -1668,13 +1668,13 @@ public static class ConfigHandler
                 it.Subid = subid;
                 it.IsSub = isSub;
                 it.PreSocksPort = preSocksPort;
-                var addStatus = isKraySubscription || it.ConfigType == EConfigType.Kray
+                var addStatus = isKraySubscription || it.ConfigType == EConfigType.KLESS
                     ? await AddKrayServer(config, it, false)
                     : await AddCustomServer(config, it, true);
                 if (addStatus == 0)
                 {
                     count++;
-                    if (isKraySubscription || it.ConfigType == EConfigType.Kray)
+                    if (isKraySubscription || it.ConfigType == EConfigType.KLESS)
                     {
                         lstAdd.Add(it);
                     }
@@ -1818,7 +1818,7 @@ public static class ConfigHandler
                     EConfigType.WireGuard => await AddWireguardServer(config, profileItem, false),
                     EConfigType.Anytls => await AddAnytlsServer(config, profileItem, false),
                     EConfigType.Naive => await AddNaiveServer(config, profileItem, false),
-                    EConfigType.Kray => await AddKrayServer(config, profileItem, false),
+                    EConfigType.KLESS => await AddKrayServer(config, profileItem, false),
                     EConfigType.PolicyGroup or EConfigType.ProxyChain => await AddServerCommon(config, profileItem, false),
                     _ => -1,
                 };

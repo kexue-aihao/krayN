@@ -109,6 +109,11 @@ public class CoreManager
             ECoreType.kray => ECoreType.kray,
             _ => ECoreType.Xray,
         };
+        if (coreType == ECoreType.kray && selecteds.Count == 1)
+        {
+            return await LoadCoreConfigSpeedtest(selecteds[0]);
+        }
+
         var fileName = string.Format(Global.CoreSpeedtestConfigFileName, Utils.GetGuid(false));
         var configPath = Utils.GetBinConfigPath(fileName);
         var result = await CoreConfigHandler.GenerateClientSpeedtestConfig(_config, configPath, selecteds, coreType);

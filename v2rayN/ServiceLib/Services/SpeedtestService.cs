@@ -492,6 +492,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         List<List<ServerTestItem>> lstTest = [];
         var lst1 = lstSelected.Where(t => t.CoreType == ECoreType.Xray).ToList();
         var lst2 = lstSelected.Where(t => t.CoreType == ECoreType.sing_box).ToList();
+        var lst3 = lstSelected.Where(t => t.CoreType == ECoreType.kray).ToList();
 
         for (var num = 0; num < (int)Math.Ceiling(lst1.Count * 1.0 / pageSize); num++)
         {
@@ -501,6 +502,7 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         {
             lstTest.Add(lst2.Skip(num * pageSize).Take(pageSize).ToList());
         }
+        lstTest.AddRange(lst3.Select(item => new List<ServerTestItem> { item }));
 
         return lstTest;
     }

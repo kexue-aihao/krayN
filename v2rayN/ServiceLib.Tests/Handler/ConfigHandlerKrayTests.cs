@@ -44,7 +44,7 @@ public class ConfigHandlerKrayTests
         count.Should().Be(1);
         var profiles = await SQLiteHelper.Instance.TableAsync<ProfileItem>().Where(t => t.Subid == sub.Id).ToListAsync();
         profiles.Should().ContainSingle();
-        profiles[0].ConfigType.Should().Be(EConfigType.Kray);
+        profiles[0].ConfigType.Should().Be(EConfigType.KLESS);
         profiles[0].CoreType.Should().Be(ECoreType.kray);
         profiles[0].Address.Should().Be("kray.example");
         profiles[0].Network.Should().Be("websocket");

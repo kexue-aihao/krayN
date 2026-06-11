@@ -5,7 +5,7 @@ public class CoreConfigKrayService(CoreConfigContext context)
     private readonly Config _config = context.AppConfig;
     private readonly ProfileItem _node = context.Node;
 
-    public RetResult GenerateClientConfigContent()
+    public RetResult GenerateClientConfigContent(int? socksPort = null, int? apiPort = null)
     {
         var ret = new RetResult();
         try
@@ -39,6 +39,10 @@ public class CoreConfigKrayService(CoreConfigContext context)
                 };
             }
 
+            var apiPortValue = apiPort ?? AppManager.Instance.GetLocalPort(EInboundProtocol.api);
+            var socksAddress = socksPort is > 0
+                ? $"127.0.0.1:{socksPort.Value}"
+                : $"127.0.0.1:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}";
             var root = new JsonObject
             {
                 ["version"] = 1,
@@ -46,8 +50,8 @@ public class CoreConfigKrayService(CoreConfigContext context)
                 ["active_profile_id"] = profileId,
                 ["local"] = new JsonObject
                 {
-                    ["api_address"] = $"127.0.0.1:{AppManager.Instance.GetLocalPort(EInboundProtocol.api)}",
-                    ["socks_address"] = $"127.0.0.1:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}",
+                    ["api_address"] = $"127.0.0.1:{apiPortValue}",
+                    ["socks_address"] = socksAddress,
                     ["allow_lan"] = _config.Inbound.FirstOrDefault()?.AllowLANConn ?? false,
                     ["mode"] = "rule",
                     ["system_proxy_mode"] = "unchanged",

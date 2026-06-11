@@ -20,7 +20,7 @@ public class FmtHandler
                 EConfigType.WireGuard => WireguardFmt.ToUri(item),
                 EConfigType.Anytls => AnytlsFmt.ToUri(item),
                 EConfigType.Naive => NaiveFmt.ToUri(item),
-                EConfigType.Kray => KrayFmt.ToUri(item),
+                EConfigType.KLESS => KrayFmt.ToUri(item),
                 _ => null,
             };
 
@@ -91,7 +91,7 @@ public class FmtHandler
             {
                 return NaiveFmt.Resolve(str, out msg);
             }
-            else if (str.StartsWith(Global.ProtocolShares[EConfigType.Kray]))
+            else if (str.StartsWith(Global.ProtocolShares[EConfigType.KLESS]))
             {
                 return KrayFmt.Resolve(str, out msg);
             }

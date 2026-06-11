@@ -17,7 +17,7 @@ public class KrayFmt : BaseFmt
             var transport = GetQueryDecoded(query, "transport", GetQueryDecoded(query, "type", "tcp"));
             var item = new ProfileItem
             {
-                ConfigType = EConfigType.Kray,
+                ConfigType = EConfigType.KLESS,
                 CoreType = ECoreType.kray,
                 Address = url.IdnHost,
                 Port = url.Port,
@@ -95,7 +95,7 @@ public class KrayFmt : BaseFmt
             query["padding_max"] = extra.KrayPaddingMax.Value.ToString();
         }
 
-        return ToUri(EConfigType.Kray, item.Address, item.Port, item.Username, query, $"#{Utils.UrlEncode(item.Remarks)}");
+        return ToUri(EConfigType.KLESS, item.Address, item.Port, item.Username, query, $"#{Utils.UrlEncode(item.Remarks)}");
     }
 
     public static List<ProfileItem>? ResolveJsonSubscription(string strData, string? subRemarks)
@@ -157,7 +157,7 @@ public class KrayFmt : BaseFmt
 
         var item = new ProfileItem
         {
-            ConfigType = EConfigType.Kray,
+            ConfigType = EConfigType.KLESS,
             CoreType = ECoreType.kray,
             Remarks = name,
             Address = host,

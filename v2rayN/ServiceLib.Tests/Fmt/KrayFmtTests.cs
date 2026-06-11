@@ -19,7 +19,7 @@ public class KrayFmtTests
         var resolved = FmtHandler.ResolveConfig(uri, out var msg);
 
         resolved.Should().NotBeNull($"uri: {uri}, msg: {msg}");
-        resolved!.ConfigType.Should().Be(EConfigType.Kray);
+        resolved!.ConfigType.Should().Be(EConfigType.KLESS);
         resolved.CoreType.Should().Be(ECoreType.kray);
         resolved.Address.Should().Be(source.Address);
         resolved.Port.Should().Be(source.Port);
@@ -58,7 +58,7 @@ public class KrayFmtTests
         items.Should().NotBeNull();
         items!.Should().ContainSingle();
         var item = items[0];
-        item.ConfigType.Should().Be(EConfigType.Kray);
+        item.ConfigType.Should().Be(EConfigType.KLESS);
         item.CoreType.Should().Be(ECoreType.kray);
         item.Remarks.Should().Be("hk-01");
         item.Address.Should().Be("kray.example");
