@@ -104,6 +104,13 @@ class KrayNLocalizations {
   String get speedTarget => _text('speedTarget');
   String get customUrl => _text('customUrl');
   String get rttLatency => _text('rttLatency');
+  String get rttAverage => _text('rttAverage');
+  String get rttMax => _text('rttMax');
+  String get rttSamples => _text('rttSamples');
+  String get jitter => _text('jitter');
+  String get packetLoss => _text('packetLoss');
+  String get udpType => _text('udpType');
+  String get udpUnsupported => _text('udpUnsupported');
   String get httpsLatency => _text('httpsLatency');
   String get speedTest => _text('speedTest');
   String get egressIp => _text('egressIp');
@@ -208,6 +215,13 @@ const _zhValues = {
   'speedTarget': '测速地址',
   'customUrl': '自定义地址',
   'rttLatency': 'RTT 延迟',
+  'rttAverage': 'RTT 平均',
+  'rttMax': '最大 RTT',
+  'rttSamples': 'RTT 样本',
+  'jitter': '抖动率',
+  'packetLoss': '丢包率',
+  'udpType': 'UDP 类型',
+  'udpUnsupported': '当前核心暂不支持 UDP 代理',
   'httpsLatency': 'HTTPS 延迟',
   'speedTest': '下载测速',
   'egressIp': '出口 IP',
@@ -300,6 +314,13 @@ const _enValues = {
   'speedTarget': 'Speed URL',
   'customUrl': 'Custom URL',
   'rttLatency': 'RTT latency',
+  'rttAverage': 'RTT average',
+  'rttMax': 'Max RTT',
+  'rttSamples': 'RTT samples',
+  'jitter': 'Jitter',
+  'packetLoss': 'Packet loss',
+  'udpType': 'UDP type',
+  'udpUnsupported': 'UDP proxy is not supported by the current core',
   'httpsLatency': 'HTTPS latency',
   'speedTest': 'Download speed',
   'egressIp': 'Egress IP',

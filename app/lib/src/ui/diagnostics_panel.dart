@@ -461,9 +461,24 @@ class _ResultView extends StatelessWidget {
           runSpacing: 10,
           children: [
             _Metric(
-                label: l.rttLatency,
-                value: _ms(value.rttMs),
+                label: l.rttAverage,
+                value:
+                    _ms(value.rttMs, available: value.rttSamplesMs.isNotEmpty),
                 icon: Icons.router_outlined),
+            _Metric(
+                label: l.rttMax,
+                value: _ms(value.rttMaxMs,
+                    available: value.rttSamplesMs.isNotEmpty),
+                icon: Icons.trending_up_outlined),
+            _Metric(
+                label: l.jitter,
+                value: _ms(value.jitterMs,
+                    available: value.rttSamplesMs.isNotEmpty),
+                icon: Icons.waves_outlined),
+            _Metric(
+                label: l.packetLoss,
+                value: _percent(value.packetLossPercent),
+                icon: Icons.signal_wifi_bad_outlined),
             _Metric(
                 label: l.httpsLatency,
                 value: _ms(value.httpsMs),
@@ -507,6 +522,22 @@ class _ResultView extends StatelessWidget {
               ? null
               : () => onCopy(value.resolvedIps.join(', ')),
         ),
+        _InfoTile(
+          icon: Icons.network_check_outlined,
+          label: l.rttSamples,
+          value: value.rttSamplesMs.isEmpty
+              ? l.unavailable
+              : value.rttSamplesMs.map((sample) => '${sample}ms').join(', '),
+          onCopy: value.rttSamplesMs.isEmpty
+              ? null
+              : () => onCopy(value.rttSamplesMs.join(', ')),
+        ),
+        _InfoTile(
+          icon: Icons.hub_outlined,
+          label: l.udpType,
+          value: _udpType(value.udpType, l),
+          onCopy: value.udpType.isEmpty ? null : () => onCopy(value.udpType),
+        ),
         if (value.errors.isNotEmpty) ...[
           const SizedBox(height: 12),
           Text(l.diagnosticErrors,
@@ -523,7 +554,32 @@ class _ResultView extends StatelessWidget {
     );
   }
 
-  static String _ms(int value) => value > 0 ? '$value ms' : '-';
+  static String _ms(int value, {bool available = true}) {
+    if (!available || value <= 0) {
+      return '-';
+    }
+    return '$value ms';
+  }
+
+  static String _percent(double value) {
+    if (value <= 0) {
+      return '0%';
+    }
+    if (value >= 100) {
+      return '100%';
+    }
+    return '${value.toStringAsFixed(value.truncateToDouble() == value ? 0 : 1)}%';
+  }
+
+  static String _udpType(String value, KrayNLocalizations l) {
+    if (value.isEmpty) {
+      return l.unavailable;
+    }
+    if (value == 'unsupported') {
+      return l.udpUnsupported;
+    }
+    return value;
+  }
 
   static String _asn(DiagnosticResult result, KrayNLocalizations l) {
     if (result.asn == 0 && result.asnOrganization.isEmpty) {

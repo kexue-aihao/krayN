@@ -40,6 +40,26 @@ func TestNormalizeTestURLFallsBack(t *testing.T) {
 	}
 }
 
+func TestCalculateRTTStats(t *testing.T) {
+	stats := calculateRTTStats([]int{10, 20, 30, 40}, 10, 6)
+
+	if stats.averageMs != 25 {
+		t.Fatalf("average mismatch: %d", stats.averageMs)
+	}
+	if stats.maxMs != 40 {
+		t.Fatalf("max mismatch: %d", stats.maxMs)
+	}
+	if stats.stdDevMs != 11 {
+		t.Fatalf("stddev mismatch: %d", stats.stdDevMs)
+	}
+	if stats.packetLossPercent != 60 {
+		t.Fatalf("packet loss mismatch: %f", stats.packetLossPercent)
+	}
+	if len(stats.samples) != 4 || stats.samples[0] != 10 || stats.samples[3] != 40 {
+		t.Fatalf("samples mismatch: %#v", stats.samples)
+	}
+}
+
 func TestExtractPuritySummary(t *testing.T) {
 	html := `<div class="line line-risk">
 <div class="riskitem riskcurrent" title="15-25 纯净"><span class="value">22%</span><span class="lab"> 纯净</span></div>

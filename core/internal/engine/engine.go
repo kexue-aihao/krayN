@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -53,7 +54,9 @@ const (
 	diagnosticConnectTimeout = 8 * time.Second
 	diagnosticHTTPTimeout    = 15 * time.Second
 	diagnosticSpeedTimeout   = 45 * time.Second
+	diagnosticRTTSamples     = 10
 	maxSpeedDownloadBytes    = 100 << 20
+	udpTypeUnsupported       = "unsupported"
 )
 
 type Engine struct {
@@ -88,25 +91,31 @@ type DiagnosticRequest struct {
 }
 
 type DiagnosticResult struct {
-	ProfileID       string   `json:"profile_id"`
-	ProfileName     string   `json:"profile_name"`
-	RTTMs           int64    `json:"rtt_ms,omitempty"`
-	HTTPSMs         int64    `json:"https_ms,omitempty"`
-	SpeedMbps       float64  `json:"speed_mbps,omitempty"`
-	DownloadedBytes int64    `json:"downloaded_bytes,omitempty"`
-	EgressIP        string   `json:"egress_ip,omitempty"`
-	ASN             int      `json:"asn,omitempty"`
-	ASNOrganization string   `json:"asn_organization,omitempty"`
-	ISP             string   `json:"isp,omitempty"`
-	Country         string   `json:"country,omitempty"`
-	CountryCode     string   `json:"country_code,omitempty"`
-	City            string   `json:"city,omitempty"`
-	PuritySummary   string   `json:"purity_summary,omitempty"`
-	PurityURL       string   `json:"purity_url,omitempty"`
-	ResolvedIPs     []string `json:"resolved_ips,omitempty"`
-	LatencyURL      string   `json:"latency_url,omitempty"`
-	SpeedURL        string   `json:"speed_url,omitempty"`
-	Errors          []string `json:"errors,omitempty"`
+	ProfileID         string   `json:"profile_id"`
+	ProfileName       string   `json:"profile_name"`
+	RTTMs             int64    `json:"rtt_ms,omitempty"`
+	RTTSamplesMs      []int    `json:"rtt_samples_ms,omitempty"`
+	RTTMaxMs          int64    `json:"rtt_max_ms,omitempty"`
+	RTTStdDevMs       int64    `json:"rtt_stddev_ms,omitempty"`
+	JitterMs          int64    `json:"jitter_ms,omitempty"`
+	PacketLossPercent float64  `json:"packet_loss_percent,omitempty"`
+	UDPType           string   `json:"udp_type,omitempty"`
+	HTTPSMs           int64    `json:"https_ms,omitempty"`
+	SpeedMbps         float64  `json:"speed_mbps,omitempty"`
+	DownloadedBytes   int64    `json:"downloaded_bytes,omitempty"`
+	EgressIP          string   `json:"egress_ip,omitempty"`
+	ASN               int      `json:"asn,omitempty"`
+	ASNOrganization   string   `json:"asn_organization,omitempty"`
+	ISP               string   `json:"isp,omitempty"`
+	Country           string   `json:"country,omitempty"`
+	CountryCode       string   `json:"country_code,omitempty"`
+	City              string   `json:"city,omitempty"`
+	PuritySummary     string   `json:"purity_summary,omitempty"`
+	PurityURL         string   `json:"purity_url,omitempty"`
+	ResolvedIPs       []string `json:"resolved_ips,omitempty"`
+	LatencyURL        string   `json:"latency_url,omitempty"`
+	SpeedURL          string   `json:"speed_url,omitempty"`
+	Errors            []string `json:"errors,omitempty"`
 }
 
 func New(configPath string, logger *slog.Logger) (*Engine, error) {
@@ -326,6 +335,7 @@ func (e *Engine) TestProfile(ctx context.Context, profileID string, req Diagnost
 		ProfileName: profile.Name,
 		LatencyURL:  normalizedTestURL(req.LatencyURL, defaultLatencyURL),
 		SpeedURL:    normalizedTestURL(req.SpeedURL, defaultSpeedURL),
+		UDPType:     udpTypeUnsupported,
 	}
 
 	resolver := newResolver(cfg.Local)
@@ -341,16 +351,16 @@ func (e *Engine) TestProfile(ctx context.Context, profileID string, req Diagnost
 		}
 		cancel()
 
-		rttCtx, cancel := context.WithTimeout(ctx, diagnosticConnectTimeout)
-		start := time.Now()
-		conn, err := resolver.DialContext(rttCtx, "tcp", endpoint.address)
+		stats, err := measureRTT(ctx, resolver, endpoint.address, diagnosticRTTSamples, diagnosticConnectTimeout)
+		result.RTTMs = stats.averageMs
+		result.RTTSamplesMs = stats.samples
+		result.RTTMaxMs = stats.maxMs
+		result.RTTStdDevMs = stats.stdDevMs
+		result.JitterMs = stats.stdDevMs
+		result.PacketLossPercent = stats.packetLossPercent
 		if err != nil {
 			result.Errors = append(result.Errors, "rtt: "+err.Error())
-		} else {
-			result.RTTMs = millisSince(start)
-			_ = conn.Close()
 		}
-		cancel()
 	}
 
 	latencyClient := e.httpClientViaProfile(profile, cfg.Local, diagnosticHTTPTimeout)
@@ -722,6 +732,88 @@ func endpointAddress(profile config.Profile) (endpointParts, error) {
 		}
 		return endpointParts{host: host, port: port, address: net.JoinHostPort(host, port)}, nil
 	}
+}
+
+type rttStats struct {
+	averageMs         int64
+	samples           []int
+	maxMs             int64
+	stdDevMs          int64
+	packetLossPercent float64
+}
+
+func measureRTT(ctx context.Context, resolver resolver, address string, sampleCount int, sampleTimeout time.Duration) (rttStats, error) {
+	if sampleCount <= 0 {
+		sampleCount = 1
+	}
+	samples := make([]int, 0, sampleCount)
+	failures := 0
+	var lastErr error
+
+	for i := 0; i < sampleCount; i++ {
+		if err := ctx.Err(); err != nil {
+			failures += sampleCount - i
+			lastErr = err
+			break
+		}
+		sampleCtx, cancel := context.WithTimeout(ctx, sampleTimeout)
+		start := time.Now()
+		conn, err := resolver.DialContext(sampleCtx, "tcp", address)
+		elapsed := millisSince(start)
+		cancel()
+		if err != nil {
+			failures++
+			lastErr = err
+			continue
+		}
+		_ = conn.Close()
+		samples = append(samples, int(elapsed))
+	}
+
+	stats := calculateRTTStats(samples, sampleCount, failures)
+	if len(samples) == 0 {
+		if lastErr != nil {
+			return stats, fmt.Errorf("all %d samples failed: %w", sampleCount, lastErr)
+		}
+		return stats, fmt.Errorf("all %d samples failed", sampleCount)
+	}
+
+	if failures > 0 {
+		if lastErr != nil {
+			return stats, fmt.Errorf("%d of %d samples failed: %w", failures, sampleCount, lastErr)
+		}
+		return stats, fmt.Errorf("%d of %d samples failed", failures, sampleCount)
+	}
+	return stats, nil
+}
+
+func calculateRTTStats(samples []int, sampleCount, failures int) rttStats {
+	stats := rttStats{
+		samples:           append([]int(nil), samples...),
+		packetLossPercent: float64(failures) * 100 / float64(sampleCount),
+	}
+	if len(samples) == 0 {
+		return stats
+	}
+
+	var sum int64
+	for _, sample := range samples {
+		value := int64(sample)
+		sum += value
+		if value > stats.maxMs {
+			stats.maxMs = value
+		}
+	}
+	average := float64(sum) / float64(len(samples))
+	stats.averageMs = int64(math.Round(average))
+
+	var variance float64
+	for _, sample := range samples {
+		diff := float64(sample) - average
+		variance += diff * diff
+	}
+	stats.stdDevMs = int64(math.Round(math.Sqrt(variance / float64(len(samples)))))
+	return stats
 }
 
 func normalizedTestURL(value, fallback string) string {

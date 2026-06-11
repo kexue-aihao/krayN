@@ -5,6 +5,12 @@ class DiagnosticResult {
     required this.latencyUrl,
     required this.speedUrl,
     this.rttMs = 0,
+    this.rttSamplesMs = const [],
+    this.rttMaxMs = 0,
+    this.rttStdDevMs = 0,
+    this.jitterMs = 0,
+    this.packetLossPercent = 0,
+    this.udpType = '',
     this.httpsMs = 0,
     this.speedMbps = 0,
     this.downloadedBytes = 0,
@@ -24,6 +30,12 @@ class DiagnosticResult {
   final String profileId;
   final String profileName;
   final int rttMs;
+  final List<int> rttSamplesMs;
+  final int rttMaxMs;
+  final int rttStdDevMs;
+  final int jitterMs;
+  final double packetLossPercent;
+  final String udpType;
   final int httpsMs;
   final double speedMbps;
   final int downloadedBytes;
@@ -45,10 +57,19 @@ class DiagnosticResult {
     return DiagnosticResult(
       profileId: json['profile_id'] as String? ?? '',
       profileName: json['profile_name'] as String? ?? '',
-      rttMs: json['rtt_ms'] as int? ?? 0,
-      httpsMs: json['https_ms'] as int? ?? 0,
+      rttMs: (json['rtt_ms'] as num?)?.round() ?? 0,
+      rttSamplesMs: (json['rtt_samples_ms'] as List<dynamic>? ?? [])
+          .whereType<num>()
+          .map((e) => e.round())
+          .toList(),
+      rttMaxMs: (json['rtt_max_ms'] as num?)?.round() ?? 0,
+      rttStdDevMs: (json['rtt_stddev_ms'] as num?)?.round() ?? 0,
+      jitterMs: (json['jitter_ms'] as num?)?.round() ?? 0,
+      packetLossPercent: (json['packet_loss_percent'] as num?)?.toDouble() ?? 0,
+      udpType: json['udp_type'] as String? ?? '',
+      httpsMs: (json['https_ms'] as num?)?.round() ?? 0,
       speedMbps: (json['speed_mbps'] as num?)?.toDouble() ?? 0,
-      downloadedBytes: json['downloaded_bytes'] as int? ?? 0,
+      downloadedBytes: (json['downloaded_bytes'] as num?)?.round() ?? 0,
       egressIp: json['egress_ip'] as String? ?? '',
       asn: json['asn'] as int? ?? 0,
       asnOrganization: json['asn_organization'] as String? ?? '',

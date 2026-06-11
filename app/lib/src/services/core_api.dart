@@ -65,7 +65,7 @@ class CoreApi {
         'latency_url': latencyUrl,
         'speed_url': speedUrl,
       },
-      timeout: const Duration(seconds: 90),
+      timeout: const Duration(seconds: 150),
     );
     return DiagnosticResult.fromJson(json as Map<String, dynamic>);
   }
