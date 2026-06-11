@@ -43,6 +43,12 @@ try {
         $out = Join-Path $OutputRoot $name
         go build -trimpath -ldflags "-s -w -X main.version=$Version -X main.commit=$Commit" -o $out ./cmd/krayn-core
         Write-Host "built $out"
+        if ($target.GOOS -eq "windows") {
+            $uninstallerName = "krayn-uninstall-$($target.GOOS)-$($target.GOARCH).exe"
+            $uninstallerOut = Join-Path $OutputRoot $uninstallerName
+            go build -trimpath -ldflags "-s -w -X main.version=$Version -X main.commit=$Commit" -o $uninstallerOut ./cmd/krayn-uninstall
+            Write-Host "built $uninstallerOut"
+        }
     }
 }
 finally {

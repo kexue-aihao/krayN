@@ -55,21 +55,27 @@ jobs:
           - goos: windows
             goarch: amd64
             artifact: krayn-core-windows-amd64.exe
+            uninstaller_artifact: krayn-uninstall-windows-amd64.exe
           - goos: windows
             goarch: arm64
             artifact: krayn-core-windows-arm64.exe
+            uninstaller_artifact: krayn-uninstall-windows-arm64.exe
           - goos: linux
             goarch: amd64
             artifact: krayn-core-linux-amd64
+            uninstaller_artifact: ""
           - goos: linux
             goarch: arm64
             artifact: krayn-core-linux-arm64
+            uninstaller_artifact: ""
           - goos: darwin
             goarch: amd64
             artifact: krayn-core-darwin-amd64
+            uninstaller_artifact: ""
           - goos: darwin
             goarch: arm64
             artifact: krayn-core-darwin-arm64
+            uninstaller_artifact: ""
     steps:
       - uses: actions/checkout@v4
         with:
@@ -98,11 +104,23 @@ jobs:
             -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.version }} -X main.commit=${GITHUB_SHA::7}" \
             -o "../dist/core/${{ matrix.artifact }}" \
             ./cmd/krayn-core
+          if [[ -n "${{ matrix.uninstaller_artifact }}" ]]; then
+            go build -trimpath \
+              -ldflags "-s -w -X main.version=${{ needs.prepare.outputs.version }} -X main.commit=${GITHUB_SHA::7}" \
+              -o "../dist/core/${{ matrix.uninstaller_artifact }}" \
+              ./cmd/krayn-uninstall
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
           path: dist/core/${{ matrix.artifact }}
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.uninstaller_artifact != ''
+        with:
+          name: ${{ matrix.uninstaller_artifact }}
+          path: dist/core/${{ matrix.uninstaller_artifact }}
 
   android:
     name: Android ${{ matrix.abi }}
@@ -190,10 +208,12 @@ jobs:
             runner: windows-latest
             flutter_arch: x64
             core_artifact: krayn-core-windows-amd64.exe
+            uninstaller_artifact: krayn-uninstall-windows-amd64.exe
           - arch: arm64
             runner: windows-latest
             flutter_arch: x64
             core_artifact: krayn-core-windows-arm64.exe
+            uninstaller_artifact: krayn-uninstall-windows-arm64.exe
     steps:
       - uses: actions/checkout@v4
         with:
@@ -207,6 +227,11 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.core_artifact }}
+          path: dist/core
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.uninstaller_artifact }}
           path: dist/core
 
       - name: Enable Windows desktop
@@ -241,7 +266,7 @@ jobs:
             $bundle = "app\build\windows\runner\Release"
           }
           Copy-Item "dist\core\${{ matrix.core_artifact }}" "$bundle\krayn-core.exe"
-          Copy-Item "packaging\uninstall\uninstall-windows.ps1" "$bundle\uninstall-krayN.ps1"
+          Copy-Item "dist\core\${{ matrix.uninstaller_artifact }}" "$bundle\krayn-uninstall.exe"
           New-Item -ItemType Directory -Force dist\release | Out-Null
           Compress-Archive -Path "$bundle\*" -DestinationPath "dist\release\krayN-$version-windows-$arch.zip" -Force
 
@@ -270,8 +295,8 @@ jobs:
           OutputBaseFilename=krayN-$version-windows-$arch-setup
           Compression=lzma
           SolidCompression=yes
-          CloseApplications=yes
-          CloseApplicationsFilter=krayn.exe,krayn-core.exe
+          CloseApplications=no
+          RestartApplications=no
           ShowLanguageDialog=auto
           UsePreviousLanguage=no
           UninstallDisplayName=krayN
@@ -293,6 +318,7 @@ jobs:
           [InstallDelete]
           Type: filesandordirs; Name: "{app}\data"
           Type: files; Name: "{app}\krayn-core.exe"
+          Type: files; Name: "{app}\uninstall-krayN.ps1"
           [Files]
           Source: "$bundle\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
@@ -302,7 +328,7 @@ jobs:
           [Tasks]
           Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
           [UninstallRun]
-          Filename: "{sys}\WindowsPowerShell\v1.0\powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\uninstall-krayN.ps1"" -AllUsers -SkipInstallDir -Silent"; Flags: runhidden waituntilterminated; RunOnceId: "krayNCompleteCleanup"
+          Filename: "{app}\krayn-uninstall.exe"; Parameters: "--all-users --skip-install-dir --silent"; Flags: runhidden waituntilterminated; RunOnceId: "krayNCompleteCleanup"
           [UninstallDelete]
           Type: filesandordirs; Name: "{userappdata}\krayN"
           Type: filesandordirs; Name: "{localappdata}\krayN"
@@ -315,8 +341,34 @@ jobs:
           Type: files; Name: "{app}\screen_retriever_windows_plugin.dll"
           Type: files; Name: "{app}\tray_manager_plugin.dll"
           Type: files; Name: "{app}\window_manager_plugin.dll"
-          Type: files; Name: "{app}\uninstall-krayN.ps1"
+          Type: files; Name: "{app}\krayn-uninstall.exe"
           Type: dirifempty; Name: "{app}"
+          [Code]
+          procedure KillKrayNProcesses();
+          var
+            ResultCode: Integer;
+          begin
+            Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM krayn.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+            Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM krayn-core.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+          end;
+
+          function InitializeSetup(): Boolean;
+          begin
+            KillKrayNProcesses();
+            Result := True;
+          end;
+
+          function InitializeUninstall(): Boolean;
+          begin
+            KillKrayNProcesses();
+            Result := True;
+          end;
+
+          procedure CurStepChanged(CurStep: TSetupStep);
+          begin
+            if CurStep = ssInstall then
+              KillKrayNProcesses();
+          end;
           "@
           Set-Content -Path installer.iss -Value $iss -Encoding UTF8
           iscc installer.iss

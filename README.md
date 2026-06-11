@@ -114,12 +114,12 @@ Linux `arm64` 当前发布 core-sidecar deb，因为 GitHub 托管 runner 上的
 
 ### 完整卸载
 
-发布包会附带按系统语言自动显示中文/英文的卸载脚本。Windows `setup.exe` 卸载器会跟随 Windows UI 语言，并在卸载时清理安装目录、快捷方式、`%APPDATA%\krayN`、`%LOCALAPPDATA%\krayN` 等用户数据。
+发布包会附带按系统语言自动显示中文/英文的卸载工具。Windows `setup.exe` 卸载器和 zip 包内的 `krayn-uninstall.exe` 会跟随 Windows UI 语言，并在卸载时清理安装目录、快捷方式、`%APPDATA%\krayN`、`%LOCALAPPDATA%\krayN` 等用户数据。
 
 zip 版本可在解压目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD" -AllUsers
+.\krayn-uninstall.exe --install-dir "$PWD" --all-users
 ```
 
 macOS / Linux 可运行随包附带的 `uninstall-krayN.sh`：
@@ -250,12 +250,12 @@ See [docs/architecture.md](docs/architecture.md) and [docs/profile-format.md](do
 
 ### Complete Uninstall
 
-Release packages include uninstall scripts that automatically display Chinese or English based on the operating system language. The Windows `setup.exe` uninstaller follows the Windows UI language and removes the install directory, shortcuts, `%APPDATA%\krayN`, `%LOCALAPPDATA%\krayN`, and related user data.
+Release packages include uninstall tools that automatically display Chinese or English based on the operating system language. The Windows `setup.exe` uninstaller and the zip package's `krayn-uninstall.exe` follow the Windows UI language and remove the install directory, shortcuts, `%APPDATA%\krayN`, `%LOCALAPPDATA%\krayN`, and related user data.
 
 For zip builds, run this from the extracted directory:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD" -AllUsers
+.\krayn-uninstall.exe --install-dir "$PWD" --all-users
 ```
 
 For macOS / Linux, run the bundled `uninstall-krayN.sh`:

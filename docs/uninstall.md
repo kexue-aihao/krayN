@@ -4,12 +4,12 @@
 
 krayN 的完整卸载包含三部分：停止运行中的 `krayn` / `krayn-core` 进程、删除安装文件和快捷方式、删除用户配置与缓存。
 
-卸载脚本会根据系统语言自动显示中文或英文：
+卸载工具会根据系统语言自动显示中文或英文：
 
 - Windows 使用当前 Windows UI 语言。
 - macOS / Linux 使用 `LC_ALL`、`LC_MESSAGES` 或 `LANG`。
 
-如果你需要保留节点配置，请在运行脚本时加 `--keep-profiles` 或 `-KeepProfiles`。
+如果你需要保留节点配置，请在运行卸载工具时加 `--keep-profiles`。
 
 ### Windows
 
@@ -22,7 +22,7 @@ krayN 的完整卸载包含三部分：停止运行中的 `krayn` / `krayn-core`
 使用 zip 解压的版本，在解压目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD" -AllUsers
+.\krayn-uninstall.exe --install-dir "$PWD" --all-users
 ```
 
 会删除：
@@ -37,7 +37,7 @@ powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD
 只卸载程序但保留节点配置：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD" -KeepProfiles
+.\krayn-uninstall.exe --install-dir "$PWD" --keep-profiles
 ```
 
 ### macOS
@@ -114,12 +114,12 @@ adb uninstall io.krayn.krayn
 
 A complete krayN uninstall has three parts: stop running `krayn` / `krayn-core` processes, remove installed files and shortcuts, and remove user configuration and cache data.
 
-The uninstall scripts display Chinese or English automatically:
+The uninstall tools display Chinese or English automatically:
 
 - Windows uses the current Windows UI language.
 - macOS / Linux use `LC_ALL`, `LC_MESSAGES`, or `LANG`.
 
-Use `--keep-profiles` or `-KeepProfiles` if you want to keep node profiles.
+Use `--keep-profiles` if you want to keep node profiles.
 
 ### Windows
 
@@ -132,7 +132,7 @@ For the `setup.exe` package:
 For the zip package, run this from the extracted directory:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD" -AllUsers
+.\krayn-uninstall.exe --install-dir "$PWD" --all-users
 ```
 
 It removes:
@@ -147,7 +147,7 @@ It removes:
 Remove the app but keep node profiles:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\uninstall-krayN.ps1 -InstallDir "$PWD" -KeepProfiles
+.\krayn-uninstall.exe --install-dir "$PWD" --keep-profiles
 ```
 
 ### macOS
