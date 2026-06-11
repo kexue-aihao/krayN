@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -33,6 +35,7 @@ func (s *Server) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("GET /state", s.handleState)
+	mux.HandleFunc("GET /proxy.pac", s.handleProxyPAC)
 	mux.HandleFunc("POST /start", s.handleStart)
 	mux.HandleFunc("POST /stop", s.handleStop)
 	mux.HandleFunc("GET /config", s.handleConfig)
@@ -82,6 +85,44 @@ func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, s.Engine.Config())
+}
+
+func (s *Server) handleProxyPAC(w http.ResponseWriter, r *http.Request) {
+	cfg := s.Engine.Config()
+	host, port, err := net.SplitHostPort(cfg.Local.SOCKSAddress)
+	if err != nil || host == "" || port == "" {
+		host = "127.0.0.1"
+		port = "7890"
+	}
+	w.Header().Set("Content-Type", "application/x-ns-proxy-autoconfig; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	_, _ = fmt.Fprintf(w, `function FindProxyForURL(url, host) {
+  if (isPlainHostName(host) ||
+      shExpMatch(host, "localhost") ||
+      shExpMatch(host, "127.*") ||
+      shExpMatch(host, "10.*") ||
+      shExpMatch(host, "192.168.*") ||
+      shExpMatch(host, "172.16.*") ||
+      shExpMatch(host, "172.17.*") ||
+      shExpMatch(host, "172.18.*") ||
+      shExpMatch(host, "172.19.*") ||
+      shExpMatch(host, "172.20.*") ||
+      shExpMatch(host, "172.21.*") ||
+      shExpMatch(host, "172.22.*") ||
+      shExpMatch(host, "172.23.*") ||
+      shExpMatch(host, "172.24.*") ||
+      shExpMatch(host, "172.25.*") ||
+      shExpMatch(host, "172.26.*") ||
+      shExpMatch(host, "172.27.*") ||
+      shExpMatch(host, "172.28.*") ||
+      shExpMatch(host, "172.29.*") ||
+      shExpMatch(host, "172.30.*") ||
+      shExpMatch(host, "172.31.*")) {
+    return "DIRECT";
+  }
+  return "SOCKS5 %s:%s; SOCKS %s:%s; DIRECT";
+}
+`, host, port, host, port)
 }
 
 func (s *Server) handleProfiles(w http.ResponseWriter, r *http.Request) {

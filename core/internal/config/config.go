@@ -25,10 +25,11 @@ type AppConfig struct {
 }
 
 type LocalConfig struct {
-	APIAddress   string `json:"api_address"`
-	SOCKSAddress string `json:"socks_address"`
-	AllowLAN     bool   `json:"allow_lan"`
-	Mode         string `json:"mode"`
+	APIAddress      string `json:"api_address"`
+	SOCKSAddress    string `json:"socks_address"`
+	AllowLAN        bool   `json:"allow_lan"`
+	Mode            string `json:"mode"`
+	SystemProxyMode string `json:"system_proxy_mode,omitempty"`
 }
 
 type Profile struct {
@@ -59,9 +60,10 @@ func Default() AppConfig {
 	return AppConfig{
 		Version: CurrentVersion,
 		Local: LocalConfig{
-			APIAddress:   "127.0.0.1:9727",
-			SOCKSAddress: "127.0.0.1:7890",
-			Mode:         "rule",
+			APIAddress:      "127.0.0.1:9727",
+			SOCKSAddress:    "127.0.0.1:7890",
+			Mode:            "rule",
+			SystemProxyMode: "unchanged",
 		},
 		AutoStart: false,
 		Profiles:  []Profile{},
@@ -135,6 +137,8 @@ func Normalize(cfg *AppConfig) {
 	if cfg.Local.Mode == "" {
 		cfg.Local.Mode = "rule"
 	}
+	cfg.Local.Mode = NormalizeMode(cfg.Local.Mode)
+	cfg.Local.SystemProxyMode = NormalizeSystemProxyMode(cfg.Local.SystemProxyMode)
 	for i := range cfg.Profiles {
 		if cfg.Profiles[i].ID == "" {
 			cfg.Profiles[i].ID = NewID()
@@ -146,6 +150,24 @@ func Normalize(cfg *AppConfig) {
 	}
 	if cfg.ActiveProfileID == "" && len(cfg.Profiles) > 0 {
 		cfg.ActiveProfileID = cfg.Profiles[0].ID
+	}
+}
+
+func NormalizeMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "global", "direct", "rule":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "rule"
+	}
+}
+
+func NormalizeSystemProxyMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "auto", "pac", "unchanged", "clear":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "unchanged"
 	}
 }
 

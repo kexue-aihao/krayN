@@ -4,6 +4,8 @@ class RuntimeState {
     required this.activeProfileId,
     required this.socksAddress,
     required this.apiAddress,
+    required this.mode,
+    required this.systemProxyMode,
     required this.uploadedBytes,
     required this.downloadedBytes,
     required this.activeConnections,
@@ -16,6 +18,8 @@ class RuntimeState {
   final String activeProfileId;
   final String socksAddress;
   final String apiAddress;
+  final String mode;
+  final String systemProxyMode;
   final int uploadedBytes;
   final int downloadedBytes;
   final int activeConnections;
@@ -31,6 +35,8 @@ class RuntimeState {
       activeProfileId: json['active_profile_id'] as String? ?? '',
       socksAddress: json['socks_address'] as String? ?? '',
       apiAddress: json['api_address'] as String? ?? '',
+      mode: json['mode'] as String? ?? 'rule',
+      systemProxyMode: json['system_proxy_mode'] as String? ?? 'unchanged',
       uploadedBytes: stats['uploaded_bytes'] as int? ?? 0,
       downloadedBytes: stats['downloaded_bytes'] as int? ?? 0,
       activeConnections: stats['active_connections'] as int? ?? 0,
@@ -43,10 +49,11 @@ class RuntimeState {
     activeProfileId: '',
     socksAddress: '',
     apiAddress: '',
+    mode: 'rule',
+    systemProxyMode: 'unchanged',
     uploadedBytes: 0,
     downloadedBytes: 0,
     activeConnections: 0,
     totalConnections: 0,
   );
 }
-

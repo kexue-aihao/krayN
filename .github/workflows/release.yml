@@ -141,11 +141,11 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms android
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/icon_config_android.yaml
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets app/icon_config_android.yaml
 
       - name: Remove generated sample tests
         shell: bash
-        run: rm -rf app/test
+        run: rm -f app/test/widget_test.dart
 
       - name: Get Flutter dependencies
         working-directory: app
@@ -158,6 +158,10 @@ jobs:
       - name: Analyze Flutter app
         working-directory: app
         run: flutter analyze
+
+      - name: Test Flutter app
+        working-directory: app
+        run: flutter test
 
       - name: Build split APKs
         working-directory: app
@@ -213,7 +217,7 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms windows
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/icon_config_windows.yaml
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets app/icon_config_windows.yaml
 
       - name: Get Flutter dependencies
         working-directory: app
@@ -367,12 +371,12 @@ jobs:
 
       - name: Restore krayN app sources
         if: matrix.flutter_gui
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets
 
       - name: Remove generated sample tests
         if: matrix.flutter_gui
         shell: bash
-        run: rm -rf app/test
+        run: rm -f app/test/widget_test.dart
 
       - name: Get Flutter dependencies
         if: matrix.flutter_gui
@@ -529,7 +533,7 @@ jobs:
         run: flutter create . --project-name krayn --org io.krayn --platforms macos
 
       - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/assets app/icon_config_macos.yaml
+        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets app/icon_config_macos.yaml
 
       - name: Get Flutter dependencies
         working-directory: app

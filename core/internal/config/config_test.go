@@ -32,3 +32,28 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("profile count mismatch: got %d", len(loaded.Profiles))
 	}
 }
+
+func TestNormalizeLocalModes(t *testing.T) {
+	cfg := Default()
+	cfg.Local.Mode = "GLOBAL"
+	cfg.Local.SystemProxyMode = "PAC"
+
+	Normalize(&cfg)
+
+	if cfg.Local.Mode != "global" {
+		t.Fatalf("mode mismatch: got %q", cfg.Local.Mode)
+	}
+	if cfg.Local.SystemProxyMode != "pac" {
+		t.Fatalf("system proxy mode mismatch: got %q", cfg.Local.SystemProxyMode)
+	}
+
+	cfg.Local.Mode = "unexpected"
+	cfg.Local.SystemProxyMode = "unexpected"
+	Normalize(&cfg)
+	if cfg.Local.Mode != "rule" {
+		t.Fatalf("invalid mode should default to rule, got %q", cfg.Local.Mode)
+	}
+	if cfg.Local.SystemProxyMode != "unchanged" {
+		t.Fatalf("invalid system proxy mode should default to unchanged, got %q", cfg.Local.SystemProxyMode)
+	}
+}

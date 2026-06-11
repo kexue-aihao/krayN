@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/local_config.dart';
 import '../models/profile.dart';
 import '../models/runtime_state.dart';
 
@@ -22,6 +23,17 @@ class CoreApi {
     return (json as List<dynamic>)
         .map((item) => Profile.fromJson(item as Map<String, dynamic>))
         .toList();
+  }
+
+  Future<LocalConfig> getLocalConfig() async {
+    final json = await _getJson('/config');
+    final config = json as Map<String, dynamic>;
+    return LocalConfig.fromJson(config['local'] as Map<String, dynamic>? ?? {});
+  }
+
+  Future<LocalConfig> updateLocalConfig(LocalConfig local) async {
+    final json = await _sendJson('PUT', '/local', local.toJson());
+    return LocalConfig.fromJson(json as Map<String, dynamic>);
   }
 
   Future<Profile> saveProfile(Profile profile) async {
@@ -67,7 +79,8 @@ class CoreApi {
     if (body != null) {
       request.body = jsonEncode(body);
     }
-    final streamed = await _client.send(request).timeout(const Duration(seconds: 8));
+    final streamed =
+        await _client.send(request).timeout(const Duration(seconds: 8));
     final response = await http.Response.fromStream(streamed);
     return _decode(response);
   }
@@ -81,7 +94,8 @@ class CoreApi {
     if (json is Map<String, dynamic> && json['error'] != null) {
       throw CoreApiException(json['error'] as String);
     }
-    throw CoreApiException('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+    throw CoreApiException(
+        'HTTP ${response.statusCode}: ${response.reasonPhrase}');
   }
 }
 
@@ -92,4 +106,3 @@ class CoreApiException implements Exception {
   @override
   String toString() => message;
 }
-

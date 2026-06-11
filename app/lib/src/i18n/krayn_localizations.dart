@@ -54,6 +54,11 @@ class KrayNLocalizations {
   String get close => _text('close');
   String get nodes => _text('nodes');
   String get addNode => _text('addNode');
+  String get importSubscription => _text('importSubscription');
+  String get subscriptionUrl => _text('subscriptionUrl');
+  String get subscriptionUrlHint => _text('subscriptionUrlHint');
+  String get subscriptionImportHelp => _text('subscriptionImportHelp');
+  String get importAction => _text('importAction');
   String get noNodes => _text('noNodes');
   String get activate => _text('activate');
   String get active => _text('active');
@@ -83,6 +88,20 @@ class KrayNLocalizations {
   String get download => _text('download');
   String get connections => _text('connections');
   String get socks => _text('socks');
+  String get invalidSubscriptionUrl => _text('invalidSubscriptionUrl');
+  String get subscriptionRequestFailed => _text('subscriptionRequestFailed');
+  String get subscriptionRequestTimeout => _text('subscriptionRequestTimeout');
+  String get emptySubscription => _text('emptySubscription');
+  String get noSubscriptionProfiles => _text('noSubscriptionProfiles');
+  String get unsupportedSubscriptionFormat =>
+      _text('unsupportedSubscriptionFormat');
+  String get invalidSubscriptionProfile => _text('invalidSubscriptionProfile');
+  String get clipboardEmpty => _text('clipboardEmpty');
+  String get systemProxyApplyFailed => _text('systemProxyApplyFailed');
+
+  String subscriptionImported(int count) {
+    return _text('subscriptionImported').replaceAll('{count}', '$count');
+  }
 
   String runtimeStatus(String status) {
     final key = 'status_${status.toLowerCase().replaceAll('-', '_')}';
@@ -113,6 +132,11 @@ const _zhValues = {
   'close': '关闭',
   'nodes': '节点',
   'addNode': '添加节点',
+  'importSubscription': '导入订阅',
+  'subscriptionUrl': '订阅链接',
+  'subscriptionUrlHint': '粘贴以 http:// 或 https:// 开头的订阅链接',
+  'subscriptionImportHelp': '支持 krayN 原生订阅配置和 base64 包裹的配置。',
+  'importAction': '导入',
   'noNodes': '暂无节点',
   'activate': '启用',
   'active': '已启用',
@@ -142,6 +166,16 @@ const _zhValues = {
   'download': '下载',
   'connections': '连接',
   'socks': 'SOCKS',
+  'invalidSubscriptionUrl': '请输入有效的订阅链接',
+  'subscriptionRequestFailed': '订阅拉取失败，请检查链接或网络',
+  'subscriptionRequestTimeout': '订阅拉取超时，请稍后重试',
+  'emptySubscription': '订阅内容为空',
+  'noSubscriptionProfiles': '订阅中没有可导入的节点',
+  'unsupportedSubscriptionFormat': '暂不支持该订阅格式',
+  'invalidSubscriptionProfile': '订阅中的节点字段不完整',
+  'clipboardEmpty': '剪贴板为空',
+  'systemProxyApplyFailed': '系统代理设置失败',
+  'subscriptionImported': '已导入 {count} 个节点',
   'status_running': '运行中',
   'status_starting': '启动中',
   'status_stopped': '已停止',
@@ -156,6 +190,13 @@ const _enValues = {
   'close': 'Close',
   'nodes': 'Nodes',
   'addNode': 'Add node',
+  'importSubscription': 'Import subscription',
+  'subscriptionUrl': 'Subscription URL',
+  'subscriptionUrlHint':
+      'Paste a subscription URL starting with http:// or https://',
+  'subscriptionImportHelp':
+      'Supports native krayN subscription configs and base64-wrapped configs.',
+  'importAction': 'Import',
   'noNodes': 'No nodes yet',
   'activate': 'Activate',
   'active': 'Active',
@@ -185,6 +226,21 @@ const _enValues = {
   'download': 'Down',
   'connections': 'Conn',
   'socks': 'SOCKS',
+  'invalidSubscriptionUrl': 'Enter a valid subscription URL',
+  'subscriptionRequestFailed':
+      'Could not fetch the subscription. Check the link or network.',
+  'subscriptionRequestTimeout':
+      'The subscription request timed out. Try again later.',
+  'emptySubscription': 'The subscription is empty',
+  'noSubscriptionProfiles':
+      'No importable nodes were found in this subscription',
+  'unsupportedSubscriptionFormat':
+      'This subscription format is not supported yet',
+  'invalidSubscriptionProfile':
+      'A node in the subscription is missing required fields',
+  'clipboardEmpty': 'Clipboard is empty',
+  'systemProxyApplyFailed': 'Could not update the system proxy',
+  'subscriptionImported': 'Imported {count} nodes',
   'status_running': 'Running',
   'status_starting': 'Starting',
   'status_stopped': 'Stopped',
@@ -192,7 +248,4 @@ const _enValues = {
   'status_error': 'Error',
 };
 
-const _localizedValues = {
-  'zh': _zhValues,
-  'en': _enValues,
-};
+const _localizedValues = {'zh': _zhValues, 'en': _enValues};

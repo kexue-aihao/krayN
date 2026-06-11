@@ -2,16 +2,21 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:collection/collection.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:intl/intl.dart';
 
 import '../i18n/krayn_localizations.dart';
 import '../i18n/language_catalog.dart';
+import '../models/local_config.dart';
 import '../models/profile.dart';
 import '../models/runtime_state.dart';
 import '../services/core_api.dart';
 import '../services/core_process.dart';
+import '../services/desktop_tray.dart';
+import '../services/subscription_importer.dart';
+import '../services/system_proxy.dart';
 import 'brand/krayn_logo_mark.dart';
 import 'profile_editor.dart';
 import 'widgets/status_panel.dart';
@@ -113,25 +118,45 @@ class _DashboardPageState extends State<DashboardPage> {
   RuntimeState _state = RuntimeState.disconnected;
   List<Profile> _profiles = const [];
   Profile _draft = Profile.empty;
+  final SubscriptionImporter _subscriptionImporter = SubscriptionImporter();
+  final SystemProxy _systemProxy = SystemProxy();
+  late final DesktopTrayController _trayController;
   bool _loading = true;
   bool _busy = false;
   String _error = '';
   Timer? _timer;
 
   Profile? get _activeProfile {
-    return _profiles.firstWhereOrNull((item) => item.id == _state.activeProfileId);
+    return _profiles.firstWhereOrNull(
+      (item) => item.id == _state.activeProfileId,
+    );
   }
 
   @override
   void initState() {
     super.initState();
+    _trayController = DesktopTrayController(
+      onStart: _start,
+      onStop: _stop,
+      onActivateProfile: _activate,
+      onRouteMode: _setRouteMode,
+      onSystemProxyMode: _setSystemProxyMode,
+      onImportSubscription: _importSubscriptionFromClipboard,
+      onRefresh: () => _refresh(),
+      onExit: _shutdownFromTray,
+    );
     _boot();
-    _timer = Timer.periodic(const Duration(seconds: 2), (_) => _refresh(silent: true));
+    _timer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refresh(silent: true),
+    );
   }
 
   @override
   void dispose() {
     _timer?.cancel();
+    unawaited(_trayController.dispose());
+    _subscriptionImporter.close();
     widget.process.dispose();
     super.dispose();
   }
@@ -142,6 +167,11 @@ class _DashboardPageState extends State<DashboardPage> {
       _error = '';
     });
     await widget.process.ensureStarted();
+    try {
+      await _trayController.init();
+    } catch (_) {
+      // Some Linux desktop sessions do not expose a tray host.
+    }
     await _refresh();
   }
 
@@ -171,6 +201,7 @@ class _DashboardPageState extends State<DashboardPage> {
         _loading = false;
         _error = '';
       });
+      await _trayController.refresh(state, profiles);
     } catch (error) {
       if (!mounted) {
         return;
@@ -185,8 +216,25 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _startStop() async {
+    if (_state.isRunning) {
+      await _stop();
+    } else {
+      await _start();
+    }
+  }
+
+  Future<void> _start() async {
     await _runBusy(() async {
-      _state = _state.isRunning ? await widget.api.stop() : await widget.api.start();
+      _state = await widget.api.start();
+      await _applySystemProxy(_state.systemProxyMode);
+      await _refresh(silent: true);
+    });
+  }
+
+  Future<void> _stop() async {
+    await _runBusy(() async {
+      await _clearManagedSystemProxy();
+      _state = await widget.api.stop();
       await _refresh(silent: true);
     });
   }
@@ -195,6 +243,10 @@ class _DashboardPageState extends State<DashboardPage> {
     await _runBusy(() async {
       _state = await widget.api.activateProfile(profile.id);
       _draft = profile;
+      if (_state.isRunning) {
+        await _applySystemProxy(_state.systemProxyMode);
+      }
+      await _trayController.refresh(_state, _profiles);
     });
   }
 
@@ -204,6 +256,85 @@ class _DashboardPageState extends State<DashboardPage> {
       await _refresh(silent: true);
       _draft = saved;
     });
+  }
+
+  Future<void> _importSubscription(String url) async {
+    final l = KrayNLocalizations.of(context);
+    await _runBusy(() async {
+      try {
+        final profiles = await _subscriptionImporter.fetchProfiles(url);
+        Profile? lastSaved;
+        for (final profile in profiles) {
+          lastSaved = await widget.api.saveProfile(profile);
+        }
+        await _refresh(silent: true);
+        if (lastSaved != null) {
+          _draft = lastSaved;
+        }
+        if (mounted) {
+          _showMessage(l.subscriptionImported(profiles.length));
+        }
+      } on SubscriptionImportException catch (error) {
+        throw _localizedSubscriptionError(l, error);
+      }
+    });
+  }
+
+  Future<void> _importSubscriptionFromClipboard() async {
+    final l = KrayNLocalizations.of(context);
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final url = data?.text?.trim() ?? '';
+    if (url.isEmpty) {
+      throw Exception(l.clipboardEmpty);
+    }
+    await _importSubscription(url);
+  }
+
+  Future<void> _setRouteMode(String mode) async {
+    await _updateLocal((local) => local.copyWith(mode: mode));
+  }
+
+  Future<void> _setSystemProxyMode(String mode) async {
+    await _updateLocal((local) => local.copyWith(systemProxyMode: mode));
+    await _applySystemProxy(mode);
+  }
+
+  Future<void> _updateLocal(
+      LocalConfig Function(LocalConfig local) update) async {
+    await _runBusy(() async {
+      final local = await widget.api.getLocalConfig();
+      await widget.api.updateLocalConfig(update(local));
+      await _refresh(silent: true);
+    });
+  }
+
+  Future<void> _applySystemProxy(String mode) async {
+    final l = KrayNLocalizations.of(context);
+    final pacUrl = 'http://${_state.apiAddress}/proxy.pac';
+    try {
+      await _systemProxy.apply(
+        mode: mode,
+        socksAddress: _state.socksAddress,
+        pacUrl: pacUrl,
+      );
+    } on SystemProxyException catch (error) {
+      throw Exception('${l.systemProxyApplyFailed}: ${error.message}');
+    }
+  }
+
+  Future<void> _clearManagedSystemProxy() async {
+    if (_state.systemProxyMode == 'auto' ||
+        _state.systemProxyMode == 'pac' ||
+        _state.systemProxyMode == 'clear') {
+      await _systemProxy.clear();
+    }
+  }
+
+  Future<void> _shutdownFromTray() async {
+    await _clearManagedSystemProxy();
+    if (_state.isRunning) {
+      await widget.api.stop();
+    }
   }
 
   Future<void> _delete(Profile profile) async {
@@ -288,9 +419,12 @@ class _DashboardPageState extends State<DashboardPage> {
                               profiles: _profiles,
                               activeProfileId: _state.activeProfileId,
                               selectedId: _draft.id,
-                              onSelect: (profile) => setState(() => _draft = profile),
+                              onSelect: (profile) =>
+                                  setState(() => _draft = profile),
                               onActivate: _activate,
-                              onAdd: () => setState(() => _draft = Profile.empty),
+                              onImport: () => _showSubscriptionDialog(context),
+                              onAdd: () =>
+                                  setState(() => _draft = Profile.empty),
                             ),
                           ),
                           const SizedBox(width: 16),
@@ -313,9 +447,12 @@ class _DashboardPageState extends State<DashboardPage> {
                               profiles: _profiles,
                               activeProfileId: _state.activeProfileId,
                               selectedId: _draft.id,
-                              onSelect: (profile) => setState(() => _draft = profile),
+                              onSelect: (profile) =>
+                                  setState(() => _draft = profile),
                               onActivate: _activate,
-                              onAdd: () => setState(() => _draft = Profile.empty),
+                              onImport: () => _showSubscriptionDialog(context),
+                              onAdd: () =>
+                                  setState(() => _draft = Profile.empty),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -337,6 +474,79 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
       ),
     );
+  }
+
+  Future<void> _showSubscriptionDialog(BuildContext context) async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final l = KrayNLocalizations.of(context);
+    final url = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(l.importSubscription),
+          content: SizedBox(
+            width: 460,
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextFormField(
+                    controller: controller,
+                    autofocus: true,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      labelText: l.subscriptionUrl,
+                      hintText: l.subscriptionUrlHint,
+                      prefixIcon: const Icon(Icons.link),
+                    ),
+                    keyboardType: TextInputType.url,
+                    validator: (value) {
+                      final uri = Uri.tryParse(value?.trim() ?? '');
+                      if (uri == null ||
+                          !uri.hasScheme ||
+                          uri.host.isEmpty ||
+                          (uri.scheme != 'http' && uri.scheme != 'https')) {
+                        return l.invalidSubscriptionUrl;
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    l.subscriptionImportHelp,
+                    style: Theme.of(dialogContext).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: Text(l.close),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  Navigator.of(dialogContext).pop(controller.text.trim());
+                }
+              },
+              icon: const Icon(Icons.download_for_offline_outlined),
+              label: Text(l.importAction),
+            ),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (url == null || url.isEmpty) {
+      return;
+    }
+    await _importSubscription(url);
   }
 
   Future<void> _showLanguageDialog(BuildContext context) {
@@ -363,9 +573,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 final selected = option.tag == selectedTag;
                 return ListTile(
                   selected: selected,
-                  leading: Icon(
-                    selected ? Icons.check_circle : Icons.language,
-                  ),
+                  leading: Icon(selected ? Icons.check_circle : Icons.language),
                   title: Text(option.label),
                   subtitle: Text(option.tag),
                   onTap: () {
@@ -386,6 +594,37 @@ class _DashboardPageState extends State<DashboardPage> {
       },
     );
   }
+
+  String _localizedSubscriptionError(
+    KrayNLocalizations l,
+    SubscriptionImportException error,
+  ) {
+    switch (error.error) {
+      case SubscriptionImportError.invalidUrl:
+        return l.invalidSubscriptionUrl;
+      case SubscriptionImportError.requestFailed:
+        if (error.statusCode != null) {
+          return '${l.subscriptionRequestFailed} (HTTP ${error.statusCode})';
+        }
+        return l.subscriptionRequestFailed;
+      case SubscriptionImportError.requestTimeout:
+        return l.subscriptionRequestTimeout;
+      case SubscriptionImportError.emptySubscription:
+        return l.emptySubscription;
+      case SubscriptionImportError.noProfiles:
+        return l.noSubscriptionProfiles;
+      case SubscriptionImportError.unsupportedFormat:
+        return l.unsupportedSubscriptionFormat;
+      case SubscriptionImportError.invalidProfile:
+        return l.invalidSubscriptionProfile;
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
 }
 
 class _ProfileList extends StatelessWidget {
@@ -395,6 +634,7 @@ class _ProfileList extends StatelessWidget {
     required this.selectedId,
     required this.onSelect,
     required this.onActivate,
+    required this.onImport,
     required this.onAdd,
   });
 
@@ -403,6 +643,7 @@ class _ProfileList extends StatelessWidget {
   final String selectedId;
   final ValueChanged<Profile> onSelect;
   final ValueChanged<Profile> onActivate;
+  final VoidCallback onImport;
   final VoidCallback onAdd;
 
   @override
@@ -418,11 +659,14 @@ class _ProfileList extends StatelessWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    l.nodes,
-                    style: theme.textTheme.titleLarge,
-                  ),
+                  child: Text(l.nodes, style: theme.textTheme.titleLarge),
                 ),
+                IconButton.filledTonal(
+                  tooltip: l.importSubscription,
+                  onPressed: onImport,
+                  icon: const Icon(Icons.download_for_offline_outlined),
+                ),
+                const SizedBox(width: 8),
                 IconButton.filledTonal(
                   tooltip: l.addNode,
                   onPressed: onAdd,
@@ -433,9 +677,7 @@ class _ProfileList extends StatelessWidget {
             const SizedBox(height: 12),
             Expanded(
               child: profiles.isEmpty
-                  ? Center(
-                      child: Text(l.noNodes),
-                    )
+                  ? Center(child: Text(l.noNodes))
                   : ListView.separated(
                       itemBuilder: (context, index) {
                         final profile = profiles[index];
@@ -471,8 +713,13 @@ class _ProfileList extends StatelessWidget {
                             ),
                             trailing: IconButton(
                               tooltip: active ? l.active : l.activate,
-                              onPressed: active ? null : () => onActivate(profile),
-                              icon: Icon(active ? Icons.check_circle : Icons.radio_button_unchecked),
+                              onPressed:
+                                  active ? null : () => onActivate(profile),
+                              icon: Icon(
+                                active
+                                    ? Icons.check_circle
+                                    : Icons.radio_button_unchecked,
+                              ),
                             ),
                             onTap: () => onSelect(profile),
                           ),

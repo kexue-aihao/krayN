@@ -58,6 +58,8 @@ type RuntimeState struct {
 	ActiveProfileID string         `json:"active_profile_id"`
 	SOCKSAddress    string         `json:"socks_address"`
 	APIAddress      string         `json:"api_address"`
+	Mode            string         `json:"mode"`
+	SystemProxyMode string         `json:"system_proxy_mode"`
 	Stats           stats.Snapshot `json:"stats"`
 }
 
@@ -97,6 +99,8 @@ func (e *Engine) State() RuntimeState {
 		ActiveProfileID: e.cfg.ActiveProfileID,
 		SOCKSAddress:    e.cfg.Local.SOCKSAddress,
 		APIAddress:      e.cfg.Local.APIAddress,
+		Mode:            e.cfg.Local.Mode,
+		SystemProxyMode: e.cfg.Local.SystemProxyMode,
 		Stats:           e.stats.Snapshot(),
 	}
 }
@@ -248,6 +252,10 @@ func (e *Engine) DialContext(ctx context.Context, target proxy.Target) (io.ReadW
 	e.mu.RLock()
 	cfg := cloneConfig(e.cfg)
 	e.mu.RUnlock()
+	if config.NormalizeMode(cfg.Local.Mode) == "direct" {
+		var dialer net.Dialer
+		return dialer.DialContext(ctx, "tcp", target.Address())
+	}
 	profile, ok := config.FindProfile(cfg, cfg.ActiveProfileID)
 	if !ok {
 		return nil, errors.New("no active profile selected")
