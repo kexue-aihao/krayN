@@ -414,6 +414,11 @@ func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile,
 	if err != nil {
 		return nil, err
 	}
+	target, err = resolveProxyTarget(ctx, target, newResolver(local))
+	if err != nil {
+		_ = raw.Close()
+		return nil, err
+	}
 	secure, err := e.clientHandshake(raw, profile)
 	if err != nil {
 		_ = raw.Close()
@@ -479,6 +484,42 @@ func decodeKLESSKey(text string) ([]byte, error) {
 		lastErr = err
 	}
 	return nil, lastErr
+}
+
+type ipResolver interface {
+	LookupIP(ctx context.Context, host string) ([]net.IP, error)
+}
+
+func resolveProxyTarget(ctx context.Context, target proxy.Target, lookup ipResolver) (proxy.Target, error) {
+	if target.Host == "" || net.ParseIP(target.Host) != nil || lookup == nil {
+		return target, nil
+	}
+	ips, err := lookup.LookupIP(ctx, target.Host)
+	if err != nil || len(ips) == 0 {
+		return target, err
+	}
+	chosen := choosePreferredIP(ips)
+	if chosen == nil {
+		return target, nil
+	}
+	return proxy.Target{Host: chosen.String(), Port: target.Port}, nil
+}
+
+func choosePreferredIP(ips []net.IP) net.IP {
+	for _, ip := range ips {
+		if ip == nil {
+			continue
+		}
+		if ip4 := ip.To4(); ip4 != nil {
+			return ip4
+		}
+	}
+	for _, ip := range ips {
+		if ip != nil {
+			return ip
+		}
+	}
+	return nil
 }
 
 func (e *Engine) watchSOCKS(errCh <-chan error) {

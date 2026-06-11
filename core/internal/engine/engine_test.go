@@ -182,6 +182,47 @@ func TestDecodeKLESSKeyAcceptsWhitespaceAndURLSafeEncoding(t *testing.T) {
 	}
 }
 
+func TestResolveProxyTargetPrefersIPv4(t *testing.T) {
+	target := proxy.Target{Host: "example.com", Port: 443}
+	resolved, err := resolveProxyTarget(context.Background(), target, stubIPResolver{
+		ips: []net.IP{
+			net.ParseIP("2001:db8::1"),
+			net.ParseIP("1.2.3.4"),
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Host != "1.2.3.4" {
+		t.Fatalf("got %q", resolved.Host)
+	}
+	if resolved.Port != target.Port {
+		t.Fatalf("port changed: %d", resolved.Port)
+	}
+}
+
+func TestResolveProxyTargetKeepsIPTargets(t *testing.T) {
+	target := proxy.Target{Host: "1.2.3.4", Port: 443}
+	resolved, err := resolveProxyTarget(context.Background(), target, stubIPResolver{
+		ips: []net.IP{net.ParseIP("9.9.9.9")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Host != target.Host || resolved.Port != target.Port {
+		t.Fatalf("target changed: %#v", resolved)
+	}
+}
+
+type stubIPResolver struct {
+	ips []net.IP
+	err error
+}
+
+func (s stubIPResolver) LookupIP(context.Context, string) ([]net.IP, error) {
+	return append([]net.IP(nil), s.ips...), s.err
+}
+
 func serveRelay(t *testing.T, listener net.Listener, private ed25519.PrivateKey, clientSecret []byte) {
 	t.Helper()
 	raw, err := listener.Accept()
