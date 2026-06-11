@@ -7,6 +7,10 @@
 build/
 coverage/
 dist/
+.nuget/
+**/bin/
+**/obj/
+TestResults/
 *.iml
 *.log
 *.tmp

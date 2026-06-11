@@ -273,8 +273,10 @@ func profileDataPaths(profileRoot string) []string {
 	}
 	return []string{
 		filepath.Join(profileRoot, "AppData", "Roaming", "krayN"),
+		filepath.Join(profileRoot, "AppData", "Roaming", "v2rayN"),
 		filepath.Join(profileRoot, "AppData", "Local", "krayN"),
 		filepath.Join(profileRoot, "AppData", "Local", "krayn"),
+		filepath.Join(profileRoot, "AppData", "Local", "v2rayN"),
 		filepath.Join(profileRoot, "AppData", "Local", "io.krayn.krayn"),
 	}
 }
@@ -306,6 +308,7 @@ func isSafeInstallDir(path string) bool {
 		"krayn.exe",
 		"krayn-core.exe",
 		"krayn-uninstall.exe",
+		filepath.Join("bin", "kray", "krayn-core.exe"),
 		"unins000.exe",
 		"uninstall-krayN.ps1",
 	} {
@@ -327,6 +330,13 @@ func clearInstallDirContents(path string, opts options, msg messages) {
 		"tray_manager_plugin.dll",
 		"window_manager_plugin.dll",
 		"data",
+		"bin",
+		"binConfigs",
+		"guiBackups",
+		"guiConfigs",
+		"guiFonts",
+		"guiLogs",
+		"guiTemps",
 	} {
 		removePathIfExists(filepath.Join(path, item), opts, msg)
 	}

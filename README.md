@@ -1,273 +1,179 @@
 # krayN
 
-## [中文](#中文) | [English](#english) | [完整卸载](#完整卸载) | [Complete Uninstall](#complete-uninstall) | [开源协议](#开源协议--license) | [GitHub Releases](https://github.com/kexue-aihao/krayN/releases) | [GitHub Actions](https://github.com/kexue-aihao/krayN/actions)
+## [中文](#中文) | [English](#english) | [构建与发布](#构建与发布) | [卸载](#卸载--uninstall) | [许可证](#许可证--license) | [GitHub Releases](https://github.com/kexue-aihao/krayN/releases) | [GitHub Actions](https://github.com/kexue-aihao/krayN/actions)
 
 ## 中文
 
-krayN 是一个基于 [kexue-aihao/kray](https://github.com/kexue-aihao/kray) KLESS 核心构建的高性能、跨平台图形化代理节点客户端。
+krayN 是一个基于 [2dust/v2rayN](https://github.com/2dust/v2rayN) 桌面客户端源码改造、使用 [kexue-aihao/kray](https://github.com/kexue-aihao/kray) / KLESS 作为核心出站能力的图形化代理节点客户端。
 
-当前项目由 Flutter 图形界面、Go 运行时核心和 GitHub Actions 自动发布流水线组成，目标是提供接近 [FlClash v0.8.93](https://github.com/chen08209/FlClash/releases/tag/v0.8.93) 的平台覆盖能力。
+本仓库已经从早期自研 Flutter/Go 客户端架构迁移为“v2rayN 成熟桌面外壳 + krayN Go 核心”的架构，目标是优先解决节点导入、系统代理、本地代理端口、核心进程管理和多平台桌面打包的可用性问题。
 
-### 功能概览
+### 当前架构
 
-- 使用 `kray/pkg/kless` 作为 KLESS 协议核心。
-- Go sidecar 提供本地 SOCKS5 代理、KLESS 出站连接、节点配置、流量统计和 HTTP 控制 API。
-- Flutter Material 3 图形界面支持节点管理、启动/停止、状态查看和流量展示。
-- 桌面端会尝试自动启动同目录、当前目录、`core/` 或 `KRAYN_CORE` 指定的 `krayn-core`。
-- GitHub Actions 支持自动构建多平台包、生成 `SHA256SUMS` 并发布 GitHub Release。
+- `v2rayN/`: 主客户端，来自 v2rayN 的 WPF / Avalonia 桌面源码，当前发布主路径使用 Avalonia 跨平台桌面端。
+- `core/`: krayN Go 核心，提供本地混合代理端口、KLESS 出站连接、诊断能力和完整卸载器。
+- `third_party/kray`: kray / KLESS 核心协议代码。
+- `app/`: 早期 Flutter 客户端代码，暂时保留作历史参考，不再作为当前 Release 主客户端。
 
-### 仓库结构
+### 已接入能力
+
+- 支持 `kray://` 节点 URI 导入和导出。
+- 支持 Kray JSON 订阅导入，包括 `profiles`、`nodes`、`profile` 和单节点对象。
+- v2rayN 节点模型中新增 `Kray` 协议和 `kray` 核心类型。
+- 启动代理时会生成 krayN 原生配置，并自动启动 `krayn-core`。
+- 发布包会内置 `bin/kray/krayn-core(.exe)`，符合 v2rayN 的核心查找规则。
+- 默认界面语言为中文。
+- Windows 发布包包含 `krayn-uninstall.exe`，卸载时会清理应用、配置、缓存和内置 Kray 核心。
+
+### Kray 订阅格式
+
+URI 示例：
 
 ```text
-app/                 Flutter GUI
-core/                Go runtime sidecar and control API
-docs/                Architecture and profile documentation
-scripts/             Build helpers
-third_party/kray     kray core submodule
+kray://client-id@example.com:8443?transport=websocket&client_secret=...&server_public_key=...&server_name=edge.example#HK-01
 ```
 
-### 快速开始
+JSON 订阅示例：
+
+```json
+{
+  "profiles": [
+    {
+      "name": "HK-01",
+      "endpoint": "example.com:8443",
+      "client_id": "client-id",
+      "client_secret": "client-secret",
+      "server_public_key": "server-public-key",
+      "transport": "websocket",
+      "server_name": "edge.example",
+      "headers": {
+        "Host": "edge.example"
+      },
+      "padding_min": 8,
+      "padding_max": 32
+    }
+  ]
+}
+```
+
+### 本地开发
+
+初始化子模块：
 
 ```powershell
 git submodule update --init --recursive
+```
+
+测试 Go 核心：
+
+```powershell
 cd core
 go test ./...
-go run ./cmd/krayn-core -gen-keys
-go run ./cmd/krayn-core
 ```
 
-在安装 Flutter SDK 的机器上启动图形界面：
+测试 .NET 客户端核心库：
 
 ```powershell
-.\scripts\scaffold-flutter.ps1
-cd app
-flutter pub get
-flutter run -d windows
+dotnet restore v2rayN\ServiceLib.Tests\ServiceLib.Tests.csproj
+dotnet test v2rayN\ServiceLib.Tests\ServiceLib.Tests.csproj -c Debug
 ```
 
-### 控制 API
-
-默认控制 API 地址为 `127.0.0.1:9727`。
-
-- `GET /health`
-- `GET /state`
-- `GET /profiles`
-- `POST /profiles`
-- `PUT /profiles/{id}`
-- `DELETE /profiles/{id}`
-- `POST /profiles/{id}/activate`
-- `POST /start`
-- `POST /stop`
-
-启动后，本地 SOCKS5 默认监听 `127.0.0.1:7890`。
-
-### 发布目标
-
-发布包覆盖矩阵参考 FlClash v0.8.93：
-
-- Windows `amd64` / `arm64`：zip 和 setup.exe。
-- macOS `amd64` / `arm64`：DMG。
-- Linux `amd64`：AppImage、deb、rpm。
-- Linux `arm64`：deb。
-- Android `arm64-v8a` / `armeabi-v7a` / `x86_64`：APK。
-- iOS / iPadOS：Flutter UI 已准备，正式分发需要 Apple 签名和 Network Extension。
-
-构建 Go core 矩阵：
+构建 Avalonia 桌面端：
 
 ```powershell
-.\scripts\build-core.ps1 -Version 0.1.0 -Commit $(git rev-parse --short HEAD)
+dotnet publish v2rayN\v2rayN.Desktop\v2rayN.Desktop.csproj -c Release -r win-x64 --self-contained true -o dist\publish\windows-amd64
 ```
 
-Android Go sidecar 构建需要 Android NDK/cgo；仅在 Android 工具链环境中使用 `-IncludeAndroid`。移动端正式代理能力通常需要 APK/IPA 加平台原生 VPN 集成。
-
-Flutter 打包需要本机 Flutter SDK：
+构建 krayN 核心：
 
 ```powershell
-.\scripts\build-flutter.ps1
+cd core
+go build -o ..\dist\core\krayn-core.exe .\cmd\krayn-core
 ```
 
-### GitHub 自动发布
+本地运行时，请把核心放到桌面程序目录下的：
 
-推送 `v*` 标签会触发 [.github/workflows/release.yml](.github/workflows/release.yml)，自动构建发布矩阵、生成 `SHA256SUMS`，并发布到 [GitHub Releases](https://github.com/kexue-aihao/krayN/releases)。
-
-示例：
-
-```powershell
-git tag -a v0.1.1 -m "krayN v0.1.1"
-git push origin master
-git push origin v0.1.1
+```text
+bin/kray/krayn-core.exe
 ```
 
-Linux `arm64` 当前发布 core-sidecar deb，因为 GitHub 托管 runner 上的 stable Flutter Linux arm64 工具链无法通过当前 Flutter setup action 稳定获取。
+### 构建与发布
 
-### 平台集成说明
+推送 `v*` tag 会触发 [.github/workflows/release.yml](.github/workflows/release.yml)，自动构建：
 
-第一版运行时提供 SOCKS5 到 KLESS 的代理能力。全局 VPN/TUN 捕获需要平台原生接入：
+- Windows `amd64` / `arm64`: zip，Windows `amd64` 额外生成 setup.exe。
+- Linux `amd64` / `arm64`: tar.gz 和 deb。
+- macOS `amd64` / `arm64`: dmg。
+- 独立 `krayn-core-*` 核心文件和 Windows `krayn-uninstall-*` 卸载器。
+- `SHA256SUMS` 校验文件。
 
-- Android `VpnService`
-- iOS Network Extension packet tunnel
-- Windows Wintun / 系统代理集成
-- macOS Network Extension / 系统代理集成
-- Linux tun2socks / 系统代理集成
+说明：当前迁移基于 v2rayN 桌面源码，Release 主目标是 Windows / macOS / Linux 桌面端。Android / iOS 需要单独实现移动端 VPN/TUN 壳，不能直接由 v2rayN 桌面源码产出。
 
-更多说明见 [docs/architecture.md](docs/architecture.md) 和 [docs/profile-format.md](docs/profile-format.md)。
+### 卸载 / Uninstall
 
-### 完整卸载
-
-发布包会附带按系统语言自动显示中文/英文的卸载工具。Windows `setup.exe` 卸载器和 zip 包内的 `krayn-uninstall.exe` 会跟随 Windows UI 语言，并在卸载时清理安装目录、快捷方式、`%APPDATA%\krayN`、`%LOCALAPPDATA%\krayN` 等用户数据。
-
-zip 版本可在解压目录运行：
+Windows 安装版可通过系统“应用和功能”卸载。zip 版可在解压目录运行：
 
 ```powershell
 .\krayn-uninstall.exe --install-dir "$PWD" --all-users
 ```
 
-macOS / Linux 可运行随包附带的 `uninstall-krayN.sh`：
+卸载器会按系统 UI 语言显示中文或英文，并尽量清理：
 
-```bash
-sudo /opt/krayN/uninstall-krayN.sh --all-users
-```
+- `krayN.exe`
+- `bin/kray/krayn-core.exe`
+- `krayn-uninstall.exe`
+- `binConfigs`、`guiConfigs`、`guiLogs`、`guiTemps`
+- `%APPDATA%\krayN`、`%LOCALAPPDATA%\krayN`
+- 旧版本可能留下的 `%APPDATA%\v2rayN`、`%LOCALAPPDATA%\v2rayN`
 
-Android 可通过系统设置卸载，或使用 `adb uninstall io.krayn.krayn`。完整路径和保留节点配置的命令见 [docs/uninstall.md](docs/uninstall.md)。
+macOS / Linux 包内会带 `uninstall-krayN.sh`，可按安装位置执行清理。
 
-### 开源协议 / License
+### 许可证 / License
 
-本仓库新增代码类型包括 Flutter/Dart GUI、Go runtime sidecar、PowerShell 构建脚本和 GitHub Actions 工作流。基于这类客户端应用和工具链代码的分发需求，krayN 采用宽松的 [MIT License](LICENSE) 开源。
-
-`third_party/kray` 是上游 Git 子模块，版权和许可边界以其上游仓库声明为准。
+本仓库当前包含并修改了 v2rayN 源码，整体按 [GPL-3.0](LICENSE) 开源和分发。`v2rayN/GlobalHotKeys` 保留其上游许可证声明；`third_party/kray` 以其上游仓库许可证声明为准。
 
 ---
 
 ## English
 
-krayN is a high-performance cross-platform graphical client for KLESS nodes, built on top of [kexue-aihao/kray](https://github.com/kexue-aihao/kray).
+krayN is a graphical proxy client rebuilt on top of [2dust/v2rayN](https://github.com/2dust/v2rayN), using [kexue-aihao/kray](https://github.com/kexue-aihao/kray) / KLESS as the core outbound engine.
 
-The project combines a Flutter GUI, a Go runtime sidecar, and GitHub Actions release automation. Its package matrix is designed to follow the platform coverage style of [FlClash v0.8.93](https://github.com/chen08209/FlClash/releases/tag/v0.8.93).
+The project has moved from the earlier custom Flutter/Go client into a “v2rayN desktop shell + krayN Go core” architecture. The immediate goal is practical usability: reliable subscription import, system proxy integration, local proxy ports, core process management, and desktop release packaging.
 
-### Features
+### Architecture
 
-- Uses `kray/pkg/kless` as the KLESS protocol core.
-- Provides a Go sidecar for local SOCKS5 proxying, KLESS outbound connections, profile storage, traffic stats, and an HTTP control API.
-- Provides a Flutter Material 3 GUI for profile management, start/stop controls, runtime status, and traffic display.
-- Attempts to auto-start `krayn-core` from the app directory, current directory, `core/`, or the `KRAYN_CORE` environment variable on desktop platforms.
-- Uses GitHub Actions to build multi-platform packages, generate `SHA256SUMS`, and publish GitHub Releases.
+- `v2rayN/`: main client based on v2rayN WPF / Avalonia sources. Current releases use the Avalonia cross-platform desktop app.
+- `core/`: krayN Go core for the local mixed proxy, KLESS outbound transport, diagnostics, and Windows uninstaller.
+- `third_party/kray`: kray / KLESS protocol core.
+- `app/`: earlier Flutter client code, kept for reference but no longer used as the main release client.
 
-### Repository Layout
+### Highlights
 
-```text
-app/                 Flutter GUI
-core/                Go runtime sidecar and control API
-docs/                Architecture and profile documentation
-scripts/             Build helpers
-third_party/kray     kray core submodule
-```
+- Imports and exports `kray://` node URIs.
+- Imports Kray JSON subscriptions from `profiles`, `nodes`, `profile`, or a single object.
+- Adds `Kray` protocol and `kray` core type to the v2rayN model.
+- Generates native krayN core config and starts `krayn-core` automatically.
+- Bundles the core at `bin/kray/krayn-core(.exe)`, matching v2rayN core discovery.
+- Defaults the UI language to Chinese.
+- Includes `krayn-uninstall.exe` in Windows packages for complete cleanup.
 
-### Quick Start
+### Build
 
 ```powershell
 git submodule update --init --recursive
 cd core
 go test ./...
-go run ./cmd/krayn-core -gen-keys
-go run ./cmd/krayn-core
+cd ..
+dotnet test v2rayN\ServiceLib.Tests\ServiceLib.Tests.csproj -c Debug
+dotnet publish v2rayN\v2rayN.Desktop\v2rayN.Desktop.csproj -c Release -r win-x64 --self-contained true -o dist\publish\windows-amd64
 ```
 
-Run the GUI on a machine with Flutter SDK installed:
+### Releases
 
-```powershell
-.\scripts\scaffold-flutter.ps1
-cd app
-flutter pub get
-flutter run -d windows
-```
+Pushing a `v*` tag triggers [.github/workflows/release.yml](.github/workflows/release.yml). It publishes Windows, Linux, and macOS desktop packages, standalone core binaries, the Windows uninstaller, and `SHA256SUMS`.
 
-### Control API
-
-The control API listens on `127.0.0.1:9727` by default.
-
-- `GET /health`
-- `GET /state`
-- `GET /profiles`
-- `POST /profiles`
-- `PUT /profiles/{id}`
-- `DELETE /profiles/{id}`
-- `POST /profiles/{id}/activate`
-- `POST /start`
-- `POST /stop`
-
-After startup, the local SOCKS5 proxy listens on `127.0.0.1:7890` by default.
-
-### Release Targets
-
-The release package matrix follows FlClash v0.8.93:
-
-- Windows `amd64` / `arm64`: zip and setup.exe.
-- macOS `amd64` / `arm64`: DMG.
-- Linux `amd64`: AppImage, deb, rpm.
-- Linux `arm64`: deb.
-- Android `arm64-v8a` / `armeabi-v7a` / `x86_64`: APK.
-- iOS / iPadOS: Flutter UI is ready; production distribution requires Apple signing and Network Extension work.
-
-Build the Go core matrix:
-
-```powershell
-.\scripts\build-core.ps1 -Version 0.1.0 -Commit $(git rev-parse --short HEAD)
-```
-
-Android Go sidecar builds require Android NDK/cgo; use `-IncludeAndroid` only in an Android toolchain environment. Mobile proxy support normally requires APK/IPA packaging plus native VPN integration.
-
-Flutter packaging requires a local Flutter SDK:
-
-```powershell
-.\scripts\build-flutter.ps1
-```
-
-### GitHub Release Automation
-
-Pushing a `v*` tag triggers [.github/workflows/release.yml](.github/workflows/release.yml), builds the release matrix, generates `SHA256SUMS`, and publishes to [GitHub Releases](https://github.com/kexue-aihao/krayN/releases).
-
-Example:
-
-```powershell
-git tag -a v0.1.1 -m "krayN v0.1.1"
-git push origin master
-git push origin v0.1.1
-```
-
-Linux `arm64` currently publishes a core-sidecar deb because GitHub's hosted stable Flutter Linux arm64 toolchain is not reliably available through the current Flutter setup action.
-
-### Platform Integration Notes
-
-The first runtime provides SOCKS5-to-KLESS proxying. Full-device VPN/TUN capture requires platform-native integration:
-
-- Android `VpnService`
-- iOS Network Extension packet tunnel
-- Windows Wintun / system proxy integration
-- macOS Network Extension / system proxy integration
-- Linux tun2socks / system proxy integration
-
-See [docs/architecture.md](docs/architecture.md) and [docs/profile-format.md](docs/profile-format.md) for details.
-
-### Complete Uninstall
-
-Release packages include uninstall tools that automatically display Chinese or English based on the operating system language. The Windows `setup.exe` uninstaller and the zip package's `krayn-uninstall.exe` follow the Windows UI language and remove the install directory, shortcuts, `%APPDATA%\krayN`, `%LOCALAPPDATA%\krayN`, and related user data.
-
-For zip builds, run this from the extracted directory:
-
-```powershell
-.\krayn-uninstall.exe --install-dir "$PWD" --all-users
-```
-
-For macOS / Linux, run the bundled `uninstall-krayN.sh`:
-
-```bash
-sudo /opt/krayN/uninstall-krayN.sh --all-users
-```
-
-Android can be removed from system Settings or with `adb uninstall io.krayn.krayn`. Full paths and keep-profile commands are documented in [docs/uninstall.md](docs/uninstall.md).
+Android and iOS are not produced from this v2rayN desktop migration. Mobile support needs a separate VPN/TUN application shell.
 
 ### License
 
-This repository's own code includes Flutter/Dart GUI code, a Go runtime sidecar, PowerShell build scripts, and GitHub Actions workflows. For this type of client application and tooling code, krayN is released under the permissive [MIT License](LICENSE).
-
-`third_party/kray` is an upstream Git submodule. Its copyright and licensing boundary follows the upstream repository.
+Because this repository now includes and modifies v2rayN source code, the combined project is distributed under [GPL-3.0](LICENSE).

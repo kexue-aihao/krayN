@@ -16,8 +16,7 @@ permissions:
 
 env:
   APP_NAME: krayN
-  FLUTTER_CHANNEL: stable
-  JAVA_VERSION: "17"
+  DOTNET_VERSION: "10.0.x"
 
 jobs:
   prepare:
@@ -122,96 +121,38 @@ jobs:
           name: ${{ matrix.uninstaller_artifact }}
           path: dist/core/${{ matrix.uninstaller_artifact }}
 
-  android:
-    name: Android ${{ matrix.abi }}
-    needs: prepare
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - abi: arm64-v8a
-            output: app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-            asset_suffix: android-arm64-v8a.apk
-          - abi: armeabi-v7a
-            output: app/build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-            asset_suffix: android-armeabi-v7a.apk
-          - abi: x86_64
-            output: app/build/app/outputs/flutter-apk/app-x86_64-release.apk
-            asset_suffix: android-x86_64.apk
+  dotnet-tests:
+    name: .NET tests
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          distribution: temurin
-          java-version: ${{ env.JAVA_VERSION }}
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
+      - name: Restore tests
+        run: dotnet restore v2rayN\ServiceLib.Tests\ServiceLib.Tests.csproj
 
-      - name: Scaffold Flutter runners
-        working-directory: app
-        run: flutter create . --project-name krayn --org io.krayn --platforms android
-
-      - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets app/icon_config_android.yaml
-
-      - name: Remove generated sample tests
-        shell: bash
-        run: rm -f app/test/widget_test.dart
-
-      - name: Get Flutter dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Apply Android app icon
-        working-directory: app
-        run: dart run flutter_launcher_icons -f icon_config_android.yaml
-
-      - name: Analyze Flutter app
-        working-directory: app
-        run: flutter analyze
-
-      - name: Test Flutter app
-        working-directory: app
-        run: flutter test
-
-      - name: Build split APKs
-        working-directory: app
-        run: flutter build apk --release --split-per-abi
-
-      - name: Stage APK
-        shell: bash
-        run: |
-          mkdir -p dist/release
-          cp "${{ matrix.output }}" "dist/release/krayN-${{ needs.prepare.outputs.version }}-${{ matrix.asset_suffix }}"
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: krayN-${{ needs.prepare.outputs.version }}-${{ matrix.asset_suffix }}
-          path: dist/release/krayN-${{ needs.prepare.outputs.version }}-${{ matrix.asset_suffix }}
+      - name: Test ServiceLib
+        run: dotnet test v2rayN\ServiceLib.Tests\ServiceLib.Tests.csproj -c Debug --no-restore
 
   windows:
     name: Windows ${{ matrix.arch }}
-    needs: [prepare, core]
-    runs-on: ${{ matrix.runner }}
+    needs: [prepare, core, dotnet-tests]
+    runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: windows-latest
-            flutter_arch: x64
+            rid: win-x64
             core_artifact: krayn-core-windows-amd64.exe
             uninstaller_artifact: krayn-uninstall-windows-amd64.exe
           - arch: arm64
-            runner: windows-latest
-            flutter_arch: x64
+            rid: win-arm64
             core_artifact: krayn-core-windows-arm64.exe
             uninstaller_artifact: krayn-uninstall-windows-arm64.exe
     steps:
@@ -219,10 +160,9 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-dotnet@v4
         with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - uses: actions/download-artifact@v4
         with:
@@ -234,55 +174,36 @@ jobs:
           name: ${{ matrix.uninstaller_artifact }}
           path: dist/core
 
-      - name: Enable Windows desktop
-        run: flutter config --enable-windows-desktop
+      - name: Publish desktop app
+        shell: pwsh
+        run: |
+          dotnet publish v2rayN\v2rayN.Desktop\v2rayN.Desktop.csproj `
+            -c Release `
+            -r ${{ matrix.rid }} `
+            --self-contained true `
+            -o dist\publish\windows-${{ matrix.arch }}
 
-      - name: Scaffold Flutter runners
-        working-directory: app
-        run: flutter create . --project-name krayn --org io.krayn --platforms windows
-
-      - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets app/icon_config_windows.yaml
-
-      - name: Get Flutter dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Apply Windows app icon
-        working-directory: app
-        run: dart run flutter_launcher_icons -f icon_config_windows.yaml
-
-      - name: Build Windows app
-        working-directory: app
-        run: flutter build windows --release
-
-      - name: Stage Windows zip
+      - name: Stage Windows package
         shell: pwsh
         run: |
           $version = "${{ needs.prepare.outputs.version }}"
           $arch = "${{ matrix.arch }}"
-          $bundle = "app\build\windows\${{ matrix.flutter_arch }}\runner\Release"
-          if (-not (Test-Path $bundle)) {
-            $bundle = "app\build\windows\runner\Release"
-          }
-          Copy-Item "dist\core\${{ matrix.core_artifact }}" "$bundle\krayn-core.exe"
-          Copy-Item "dist\core\${{ matrix.uninstaller_artifact }}" "$bundle\krayn-uninstall.exe"
+          $publish = "dist\publish\windows-$arch"
+          $stage = "dist\stage\krayN-$version-windows-$arch"
+          New-Item -ItemType Directory -Force "$stage\bin\kray" | Out-Null
+          Copy-Item "$publish\*" "$stage" -Recurse -Force
+          Copy-Item "dist\core\${{ matrix.core_artifact }}" "$stage\bin\kray\krayn-core.exe" -Force
+          Copy-Item "dist\core\${{ matrix.uninstaller_artifact }}" "$stage\krayn-uninstall.exe" -Force
           New-Item -ItemType Directory -Force dist\release | Out-Null
-          Compress-Archive -Path "$bundle\*" -DestinationPath "dist\release\krayN-$version-windows-$arch.zip" -Force
+          Compress-Archive -Path "$stage\*" -DestinationPath "dist\release\krayN-$version-windows-$arch.zip" -Force
 
       - name: Create Windows installer
+        if: matrix.arch == 'amd64'
         shell: pwsh
         run: |
           choco install innosetup -y --no-progress
           $version = "${{ needs.prepare.outputs.version }}"
-          $arch = "${{ matrix.arch }}"
-          $bundle = "app\build\windows\${{ matrix.flutter_arch }}\runner\Release"
-          if (-not (Test-Path $bundle)) {
-            $bundle = "app\build\windows\runner\Release"
-          }
-          New-Item -ItemType Directory -Force dist\installer-languages | Out-Null
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseSimplified.isl" -OutFile "dist\installer-languages\ChineseSimplified.isl"
-          Invoke-WebRequest -Uri "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseTraditional.isl" -OutFile "dist\installer-languages\ChineseTraditional.isl"
+          $stage = "dist\stage\krayN-$version-windows-${{ matrix.arch }}"
           $iss = @"
           [Setup]
           AppId={{io.krayn.krayN}}
@@ -292,7 +213,7 @@ jobs:
           DefaultDirName={autopf}\krayN
           DefaultGroupName=krayN
           OutputDir=dist\release
-          OutputBaseFilename=krayN-$version-windows-$arch-setup
+          OutputBaseFilename=krayN-$version-windows-amd64-setup
           Compression=lzma
           SolidCompression=yes
           CloseApplications=no
@@ -300,47 +221,42 @@ jobs:
           ShowLanguageDialog=auto
           UsePreviousLanguage=no
           UninstallDisplayName=krayN
-          UninstallDisplayIcon={app}\krayn.exe
+          UninstallDisplayIcon={app}\krayN.exe
           [Languages]
           Name: "english"; MessagesFile: "compiler:Default.isl"
-          Name: "chinesesimplified"; MessagesFile: "dist\installer-languages\ChineseSimplified.isl"
-          Name: "chinesetraditional"; MessagesFile: "dist\installer-languages\ChineseTraditional.isl"
-          [CustomMessages]
-          english.CreateDesktopIcon=Create a desktop shortcut
-          chinesesimplified.CreateDesktopIcon=创建桌面快捷方式
-          chinesetraditional.CreateDesktopIcon=建立桌面捷徑
-          english.AdditionalIcons=Additional icons:
-          chinesesimplified.AdditionalIcons=附加图标：
-          chinesetraditional.AdditionalIcons=附加圖示：
-          english.UninstallKrayN=Uninstall krayN
-          chinesesimplified.UninstallKrayN=卸载 krayN
-          chinesetraditional.UninstallKrayN=解除安装 krayN
+          Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+          [Tasks]
+          Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
           [InstallDelete]
+          Type: filesandordirs; Name: "{app}\bin"
+          Type: filesandordirs; Name: "{app}\binConfigs"
+          Type: filesandordirs; Name: "{app}\guiConfigs"
           Type: filesandordirs; Name: "{app}\data"
           Type: files; Name: "{app}\krayn-core.exe"
           Type: files; Name: "{app}\uninstall-krayN.ps1"
           [Files]
-          Source: "$bundle\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
+          Source: "$stage\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
           [Icons]
-          Name: "{group}\krayN"; Filename: "{app}\krayn.exe"
-          Name: "{group}\{cm:UninstallKrayN}"; Filename: "{uninstallexe}"
-          Name: "{commondesktop}\krayN"; Filename: "{app}\krayn.exe"; Tasks: desktopicon
-          [Tasks]
-          Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+          Name: "{group}\krayN"; Filename: "{app}\krayN.exe"
+          Name: "{group}\Uninstall krayN"; Filename: "{uninstallexe}"
+          Name: "{commondesktop}\krayN"; Filename: "{app}\krayN.exe"; Tasks: desktopicon
           [UninstallRun]
           Filename: "{app}\krayn-uninstall.exe"; Parameters: "--all-users --skip-install-dir --silent"; Flags: runhidden waituntilterminated; RunOnceId: "krayNCompleteCleanup"
           [UninstallDelete]
           Type: filesandordirs; Name: "{userappdata}\krayN"
+          Type: filesandordirs; Name: "{userappdata}\v2rayN"
           Type: filesandordirs; Name: "{localappdata}\krayN"
           Type: filesandordirs; Name: "{localappdata}\krayn"
-          Type: filesandordirs; Name: "{localappdata}\io.krayn.krayn"
+          Type: filesandordirs; Name: "{localappdata}\v2rayN"
+          Type: filesandordirs; Name: "{app}\bin"
+          Type: filesandordirs; Name: "{app}\binConfigs"
+          Type: filesandordirs; Name: "{app}\guiBackups"
+          Type: filesandordirs; Name: "{app}\guiConfigs"
+          Type: filesandordirs; Name: "{app}\guiFonts"
+          Type: filesandordirs; Name: "{app}\guiLogs"
+          Type: filesandordirs; Name: "{app}\guiTemps"
           Type: filesandordirs; Name: "{app}\data"
-          Type: files; Name: "{app}\krayn.exe"
-          Type: files; Name: "{app}\krayn-core.exe"
-          Type: files; Name: "{app}\flutter_windows.dll"
-          Type: files; Name: "{app}\screen_retriever_windows_plugin.dll"
-          Type: files; Name: "{app}\tray_manager_plugin.dll"
-          Type: files; Name: "{app}\window_manager_plugin.dll"
+          Type: files; Name: "{app}\krayN.exe"
           Type: files; Name: "{app}\krayn-uninstall.exe"
           Type: dirifempty; Name: "{app}"
           [Code]
@@ -348,7 +264,7 @@ jobs:
           var
             ResultCode: Integer;
           begin
-            Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM krayn.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+            Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM krayN.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
             Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /T /IM krayn-core.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
           end;
 
@@ -363,12 +279,6 @@ jobs:
             KillKrayNProcesses();
             Result := True;
           end;
-
-          procedure CurStepChanged(CurStep: TSetupStep);
-          begin
-            if CurStep = ssInstall then
-              KillKrayNProcesses();
-          end;
           "@
           Set-Content -Path installer.iss -Value $iss -Encoding UTF8
           iscc installer.iss
@@ -378,192 +288,94 @@ jobs:
           name: krayN-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}
           path: |
             dist/release/krayN-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}.zip
-            dist/release/krayN-${{ needs.prepare.outputs.version }}-windows-${{ matrix.arch }}-setup.exe
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-windows-amd64-setup.exe
           if-no-files-found: ignore
 
   linux:
     name: Linux ${{ matrix.arch }}
-    needs: [prepare, core]
-    runs-on: ${{ matrix.runner }}
+    needs: [prepare, core, dotnet-tests]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
-            runner: ubuntu-latest
-            core_artifact: krayn-core-linux-amd64
+            rid: linux-x64
             deb_arch: amd64
-            flutter_gui: true
-            appimage: true
-            rpm: true
+            core_artifact: krayn-core-linux-amd64
           - arch: arm64
-            runner: ubuntu-latest
-            core_artifact: krayn-core-linux-arm64
+            rid: linux-arm64
             deb_arch: arm64
-            flutter_gui: false
-            appimage: false
-            rpm: false
+            core_artifact: krayn-core-linux-arm64
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - uses: subosito/flutter-action@v2
-        if: matrix.flutter_gui
+      - uses: actions/setup-dotnet@v4
         with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: true
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.core_artifact }}
           path: dist/core
 
-      - name: Install Linux build dependencies
-        if: matrix.flutter_gui
+      - name: Publish desktop app
         run: |
-          sudo apt-get update
-          sudo apt-get install -y clang cmake ninja-build pkg-config libgtk-3-dev libayatana-appindicator3-dev liblzma-dev dpkg-dev rpm patchelf
+          dotnet publish v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -o dist/publish/linux-${{ matrix.arch }}
 
-      - name: Enable Linux desktop
-        if: matrix.flutter_gui
-        run: flutter config --enable-linux-desktop
-
-      - name: Scaffold Flutter runners
-        if: matrix.flutter_gui
-        working-directory: app
-        run: flutter create . --project-name krayn --org io.krayn --platforms linux
-
-      - name: Restore krayN app sources
-        if: matrix.flutter_gui
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets
-
-      - name: Remove generated sample tests
-        if: matrix.flutter_gui
-        shell: bash
-        run: rm -f app/test/widget_test.dart
-
-      - name: Get Flutter dependencies
-        if: matrix.flutter_gui
-        working-directory: app
-        run: flutter pub get
-
-      - name: Build Linux app
-        if: matrix.flutter_gui
-        working-directory: app
-        run: flutter build linux --release
-
-      - name: Stage Linux bundle
+      - name: Stage Linux packages
         shell: bash
         run: |
           set -euo pipefail
           version="${{ needs.prepare.outputs.version }}"
           arch="${{ matrix.arch }}"
-          mkdir -p dist/release "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN" "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications"
-          if [[ "${{ matrix.flutter_gui }}" == "true" ]]; then
-            bundle="app/build/linux/${arch}/release/bundle"
-            if [[ ! -d "${bundle}" ]]; then
-              bundle="app/build/linux/x64/release/bundle"
-            fi
-            install -m 755 "dist/core/${{ matrix.core_artifact }}" "${bundle}/krayn-core"
-            cp -a "${bundle}/." "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/"
-          else
-            install -m 755 "dist/core/${{ matrix.core_artifact }}" "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/krayn-core"
-            cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/krayn" <<'EOF'
-          #!/bin/sh
-          exec /opt/krayN/krayn-core "$@"
-          EOF
-            chmod +x "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/krayn"
-          fi
-          install -m 755 "packaging/uninstall/uninstall-unix.sh" "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/uninstall-krayN.sh"
-          cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications/krayN.desktop" <<EOF
+          stage="dist/stage/krayN-${version}-linux-${arch}"
+          mkdir -p "${stage}/bin/kray" dist/release
+          cp -a "dist/publish/linux-${arch}/." "${stage}/"
+          install -m 755 "dist/core/${{ matrix.core_artifact }}" "${stage}/bin/kray/krayn-core"
+          install -m 755 "packaging/uninstall/uninstall-unix.sh" "${stage}/uninstall-krayN.sh"
+          tar -C "dist/stage" -czf "dist/release/krayN-${version}-linux-${arch}.tar.gz" "krayN-${version}-linux-${arch}"
+
+          pkg="dist/pkg/krayN_${version}_${{ matrix.deb_arch }}"
+          mkdir -p "${pkg}/opt/krayN" "${pkg}/usr/share/applications" "${pkg}/usr/share/icons/hicolor/256x256/apps" "${pkg}/DEBIAN"
+          cp -a "${stage}/." "${pkg}/opt/krayN/"
+          cat > "${pkg}/usr/share/applications/krayN.desktop" <<EOF
           [Desktop Entry]
           Type=Application
           Name=krayN
-          Exec=/opt/krayN/krayn
+          Exec=/opt/krayN/krayN
           Icon=krayN
           Categories=Network;
           EOF
-          mkdir -p "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps"
-          cp app/assets/brand/krayn-logo.svg "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps/krayN.svg"
-          mkdir -p "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/DEBIAN"
-          cat > "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/DEBIAN/control" <<EOF
+          cp v2rayN/v2rayN.Desktop/v2rayN.png "${pkg}/usr/share/icons/hicolor/256x256/apps/krayN.png"
+          cat > "${pkg}/DEBIAN/control" <<EOF
           Package: krayn
           Version: ${version}
           Section: net
           Priority: optional
           Architecture: ${{ matrix.deb_arch }}
-          Depends: libgtk-3-0, libayatana-appindicator3-1 | libappindicator3-1
+          Depends: libc6
           Maintainer: krayN
-          Description: Cross-platform GUI client for kray KLESS nodes
+          Description: Desktop GUI client for kray KLESS nodes
           EOF
-          dpkg-deb --build "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}" "dist/release/krayN-${version}-linux-${arch}.deb"
-
-      - name: Build Linux rpm
-        if: matrix.rpm
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          mkdir -p rpmbuild/{BUILD,RPMS,SOURCES,SPECS,SRPMS}
-          tar --exclude='./DEBIAN' -C "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}" -czf "rpmbuild/SOURCES/krayn-${version}.tar.gz" .
-          cat > rpmbuild/SPECS/krayn.spec <<EOF
-          Name: krayn
-          Version: ${version}
-          Release: 1%{?dist}
-          Summary: Cross-platform GUI client for kray KLESS nodes
-          License: MIT
-          BuildArch: x86_64
-          %description
-          Cross-platform GUI client for kray KLESS nodes.
-          %prep
-          %setup -q -c -T
-          tar -xzf "$PWD/rpmbuild/SOURCES/krayn-${version}.tar.gz"
-          %install
-          mkdir -p %{buildroot}
-          cp -a . %{buildroot}/
-          %files
-          /opt/krayN
-          /usr/share/applications/krayN.desktop
-          /usr/share/icons/hicolor/scalable/apps/krayN.svg
-          EOF
-          rpmbuild --define "_topdir $PWD/rpmbuild" -bb rpmbuild/SPECS/krayn.spec
-          cp rpmbuild/RPMS/x86_64/*.rpm "dist/release/krayN-${version}-linux-amd64.rpm"
-
-      - name: Build Linux AppImage
-        if: matrix.appimage
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="${{ needs.prepare.outputs.version }}"
-          appdir="dist/AppDir"
-          mkdir -p "${appdir}/usr/bin" "${appdir}/usr/share/applications"
-          cp -a "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/opt/krayN/." "${appdir}/usr/bin/"
-          cp "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/applications/krayN.desktop" "${appdir}/krayN.desktop"
-          cp "dist/pkg/krayN_${version}_${{ matrix.deb_arch }}/usr/share/icons/hicolor/scalable/apps/krayN.svg" "${appdir}/krayN.svg"
-          cat > "${appdir}/AppRun" <<'EOF'
-          #!/bin/sh
-          HERE="$(dirname "$(readlink -f "$0")")"
-          exec "$HERE/usr/bin/krayn" "$@"
-          EOF
-          chmod +x "${appdir}/AppRun"
-          install -m 755 "packaging/uninstall/uninstall-unix.sh" "${appdir}/usr/bin/uninstall-krayN.sh"
-          curl -L -o appimagetool "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage"
-          chmod +x appimagetool
-          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool "${appdir}" "dist/release/krayN-${version}-linux-amd64.AppImage"
+          dpkg-deb --build "${pkg}" "dist/release/krayN-${version}-linux-${arch}.deb"
 
       - uses: actions/upload-artifact@v4
         with:
           name: krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}
           path: |
+            dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.tar.gz
             dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.deb
-            dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.rpm
-            dist/release/krayN-${{ needs.prepare.outputs.version }}-linux-${{ matrix.arch }}.AppImage
-          if-no-files-found: ignore
 
   macos:
     name: macOS ${{ matrix.arch }}
-    needs: [prepare, core]
+    needs: [prepare, core, dotnet-tests]
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     strategy:
@@ -571,9 +383,11 @@ jobs:
       matrix:
         include:
           - arch: amd64
+            rid: osx-x64
             runner: macos-15-intel
             core_artifact: krayn-core-darwin-amd64
           - arch: arm64
+            rid: osx-arm64
             runner: macos-15
             core_artifact: krayn-core-darwin-arm64
     steps:
@@ -581,54 +395,53 @@ jobs:
         with:
           submodules: recursive
 
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-dotnet@v4
         with:
-          channel: ${{ env.FLUTTER_CHANNEL }}
-          cache: false
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - uses: actions/download-artifact@v4
         with:
           name: ${{ matrix.core_artifact }}
           path: dist/core
 
-      - name: Enable macOS desktop
-        run: flutter config --enable-macos-desktop
+      - name: Publish desktop app
+        run: |
+          dotnet publish v2rayN/v2rayN.Desktop/v2rayN.Desktop.csproj \
+            -c Release \
+            -r ${{ matrix.rid }} \
+            --self-contained true \
+            -o dist/publish/macos-${{ matrix.arch }}
 
-      - name: Scaffold Flutter runners
-        working-directory: app
-        run: flutter create . --project-name krayn --org io.krayn --platforms macos
-
-      - name: Restore krayN app sources
-        run: git checkout -- app/pubspec.yaml app/analysis_options.yaml app/lib app/test app/assets app/icon_config_macos.yaml
-
-      - name: Get Flutter dependencies
-        working-directory: app
-        run: flutter pub get
-
-      - name: Apply macOS app icon
-        working-directory: app
-        run: dart run flutter_launcher_icons -f icon_config_macos.yaml
-
-      - name: Build macOS app
-        working-directory: app
-        run: flutter build macos --release
-
-      - name: Build DMG
+      - name: Build macOS app and DMG
         shell: bash
         run: |
           set -euo pipefail
           version="${{ needs.prepare.outputs.version }}"
           arch="${{ matrix.arch }}"
-          app_bundle="app/build/macos/Build/Products/Release/krayn.app"
-          mkdir -p "${app_bundle}/Contents/MacOS"
-          cp "dist/core/${{ matrix.core_artifact }}" "${app_bundle}/Contents/MacOS/krayn-core"
-          chmod +x "${app_bundle}/Contents/MacOS/krayn-core"
-          mkdir -p "${app_bundle}/Contents/Resources"
-          cp "packaging/uninstall/uninstall-unix.sh" "${app_bundle}/Contents/Resources/uninstall-krayN.sh"
-          chmod +x "${app_bundle}/Contents/Resources/uninstall-krayN.sh"
-          mkdir -p dist/release dist/dmg
-          cp -R "${app_bundle}" dist/dmg/
-          cp "packaging/uninstall/uninstall-unix.sh" dist/dmg/uninstall-krayN.sh
+          app="dist/stage/krayN.app"
+          mkdir -p "${app}/Contents/MacOS/bin/kray" "${app}/Contents/Resources" dist/release dist/dmg
+          cp -a "dist/publish/macos-${arch}/." "${app}/Contents/MacOS/"
+          install -m 755 "dist/core/${{ matrix.core_artifact }}" "${app}/Contents/MacOS/bin/kray/krayn-core"
+          install -m 755 "packaging/uninstall/uninstall-unix.sh" "${app}/Contents/Resources/uninstall-krayN.sh"
+          cp v2rayN/v2rayN.Desktop/v2rayN.icns "${app}/Contents/Resources/krayN.icns"
+          cat > "${app}/Contents/Info.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleExecutable</key><string>krayN</string>
+            <key>CFBundleIdentifier</key><string>io.krayn.krayN</string>
+            <key>CFBundleName</key><string>krayN</string>
+            <key>CFBundleDisplayName</key><string>krayN</string>
+            <key>CFBundleVersion</key><string>${version}</string>
+            <key>CFBundleShortVersionString</key><string>${version}</string>
+            <key>CFBundleIconFile</key><string>krayN.icns</string>
+            <key>LSMinimumSystemVersion</key><string>12.0</string>
+          </dict>
+          </plist>
+          EOF
+          cp -R "${app}" dist/dmg/
+          cp packaging/uninstall/uninstall-unix.sh dist/dmg/uninstall-krayN.sh
           chmod +x dist/dmg/uninstall-krayN.sh
           ln -s /Applications dist/dmg/Applications
           hdiutil create -volname "krayN" -srcfolder dist/dmg -ov -format UDZO "dist/release/krayN-${version}-macos-${arch}.dmg"
@@ -640,12 +453,24 @@ jobs:
 
   checksums:
     name: Checksums
-    needs: [prepare, android, windows, linux, macos]
+    needs: [prepare, core, windows, linux, macos]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: krayN-*
+          path: dist/release
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: krayn-core-*
+          path: dist/release
+          merge-multiple: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: krayn-uninstall-*
           path: dist/release
           merge-multiple: true
 

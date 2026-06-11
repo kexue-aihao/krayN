@@ -29,10 +29,17 @@ func run() int {
 	var configPath string
 	var printVersion bool
 	var generateKeys bool
+	var autostart bool
 	flag.StringVar(&configPath, "config", "", "path to krayN config.json")
+	flag.StringVar(&configPath, "c", "", "path to krayN config.json")
 	flag.BoolVar(&printVersion, "version", false, "print version information")
 	flag.BoolVar(&generateKeys, "gen-keys", false, "generate KLESS demo identity material")
+	flag.BoolVar(&autostart, "start", false, "start the local proxy immediately")
 	flag.Parse()
+	if configPath == "" && flag.NArg() > 0 {
+		configPath = flag.Arg(0)
+		autostart = true
+	}
 
 	if printVersion {
 		fmt.Printf("krayn-core %s (%s)\n", version, commit)
@@ -56,7 +63,7 @@ func run() int {
 	defer stop()
 
 	cfg := appEngine.Config()
-	if cfg.AutoStart && cfg.ActiveProfileID != "" {
+	if (autostart || cfg.AutoStart) && cfg.ActiveProfileID != "" {
 		if err := appEngine.Start(ctx); err != nil {
 			logger.Warn("autostart failed", "error", err)
 		}
