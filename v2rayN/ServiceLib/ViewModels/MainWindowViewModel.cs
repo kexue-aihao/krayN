@@ -272,7 +272,7 @@ public class MainWindowViewModel : MyReactiveObject
         await ConfigHandler.InitBuiltinFullConfigTemplate(_config);
         await ProfileExManager.Instance.Init();
         await CoreManager.Instance.Init(_config, UpdateHandler);
-        TaskManager.Instance.RegUpdateTask(_config, UpdateTaskHandler);
+        TaskManager.Instance.RegUpdateTask(_config, UpdateTaskHandler, UpdateSubscriptionProcess);
 
         if (_config.GuiItem.EnableStatistics || _config.GuiItem.DisplayRealTimeSpeed)
         {
@@ -302,24 +302,7 @@ public class MainWindowViewModel : MyReactiveObject
         NoticeManager.Instance.SendMessageEx(msg);
         if (success)
         {
-            var indexIdOld = _config.IndexId;
             await RefreshServers();
-
-            // If indexId changed or subIndexId is empty, directly reload.
-            if (indexIdOld != _config.IndexId || _config.SubIndexId.IsNullOrEmpty())
-            {
-                await Reload();
-            }
-            else
-            {
-                // The activity config belongs to the current group.
-                var profile = await AppManager.Instance.GetProfileItem(_config.IndexId);
-                if (profile != null && profile.Subid == _config.SubIndexId)
-                {
-                    await Reload();
-                }
-            }
-
             if (_config.UiItem.EnableAutoAdjustMainLvColWidth)
             {
                 AppEvents.AdjustMainLvColWidthRequested.Publish();
@@ -472,9 +455,29 @@ public class MainWindowViewModel : MyReactiveObject
         }
     }
 
-    public async Task UpdateSubscriptionProcess(string subId, bool blProxy)
+    public async Task<bool> UpdateSubscriptionProcess(string subId, bool blProxy)
     {
-        await Task.Run(async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
+        var activeIndexId = _config.IndexId;
+        var activeProfile = await AppManager.Instance.GetProfileItem(activeIndexId);
+        var success = await Task.Run(async () => await SubscriptionHandler.UpdateProcess(_config, subId, blProxy, UpdateTaskHandler));
+        if (!success)
+        {
+            return false;
+        }
+
+        await RefreshServers();
+        var newActiveProfile = await AppManager.Instance.GetProfileItem(_config.IndexId);
+        if (activeIndexId != _config.IndexId || ConfigHandler.HasRuntimeProfileChanged(activeProfile, newActiveProfile))
+        {
+            await Reload();
+        }
+
+        if (_config.UiItem.EnableAutoAdjustMainLvColWidth)
+        {
+            AppEvents.AdjustMainLvColWidthRequested.Publish();
+        }
+
+        return true;
     }
 
     #endregion Subscription

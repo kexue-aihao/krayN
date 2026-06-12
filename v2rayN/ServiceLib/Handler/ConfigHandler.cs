@@ -1304,6 +1304,78 @@ public static class ConfigHandler
         }
     }
 
+    public static bool HasRuntimeProfileChanged(ProfileItem? oldProfile, ProfileItem? newProfile)
+    {
+        if (oldProfile == null || newProfile == null)
+        {
+            return oldProfile != newProfile;
+        }
+
+        return RuntimeProfileFingerprint(oldProfile) != RuntimeProfileFingerprint(newProfile);
+    }
+
+    private static void ReuseMatchedSubscriptionProfileIds(IEnumerable<ProfileItem>? oldProfiles, IEnumerable<ProfileItem>? newProfiles)
+    {
+        if (oldProfiles == null || newProfiles == null)
+        {
+            return;
+        }
+
+        var usedOldIds = new HashSet<string>();
+        foreach (var item in newProfiles)
+        {
+            var matched = FindMatchedProfileItem(
+                oldProfiles.Where(t => t.IndexId.IsNotEmpty() && !usedOldIds.Contains(t.IndexId)),
+                item);
+            if (matched == null)
+            {
+                continue;
+            }
+
+            item.IndexId = matched.IndexId;
+            usedOldIds.Add(matched.IndexId);
+        }
+    }
+
+    private static string RuntimeProfileFingerprint(ProfileItem profile)
+    {
+        var protocolExtra = profile.GetProtocolExtra();
+        var transportExtra = profile.GetTransportExtra();
+        return JsonUtils.Serialize(new
+        {
+            profile.ConfigType,
+            profile.CoreType,
+            Address = NormalizeText(profile.Address),
+            profile.Port,
+            Password = NormalizeText(profile.Password),
+            Username = NormalizeText(profile.Username),
+            Network = NormalizeText(profile.Network),
+            StreamSecurity = NormalizeText(profile.StreamSecurity),
+            AllowInsecure = profile.GetAllowInsecure(),
+            Sni = NormalizeText(profile.Sni),
+            Alpn = NormalizeText(profile.Alpn),
+            Fingerprint = NormalizeText(profile.Fingerprint),
+            PublicKey = NormalizeText(profile.PublicKey),
+            ShortId = NormalizeText(profile.ShortId),
+            SpiderX = NormalizeText(profile.SpiderX),
+            Mldsa65Verify = NormalizeText(profile.Mldsa65Verify),
+            profile.MuxEnabled,
+            Cert = NormalizeText(profile.Cert),
+            CertSha = NormalizeText(profile.CertSha),
+            EchConfigList = NormalizeText(profile.EchConfigList),
+            VerifyPeerCertByName = NormalizeText(profile.VerifyPeerCertByName),
+            Finalmask = NormalizeText(profile.Finalmask),
+            profile.PreSocksPort,
+            protocolExtra,
+            transportExtra,
+        }, false);
+    }
+
+    private static string NormalizeText(string? value)
+    {
+        return value?.TrimEx() ?? string.Empty;
+    }
+
     /// <summary>
     /// Remove a single server profile by its index ID
     /// Deletes the configuration file if it's a custom config
@@ -1547,7 +1619,7 @@ public static class ConfigHandler
     /// <param name="subid">Subscription ID to associate with the servers</param>
     /// <param name="isSub">Whether this is from a subscription</param>
     /// <returns>Number of successfully imported servers or -1 if failed</returns>
-    private static async Task<int> AddBatchServersCommon(Config config, string strData, string subid, bool isSub)
+    private static async Task<int> AddBatchServersCommon(Config config, string strData, string subid, bool isSub, IEnumerable<ProfileItem>? oldProfiles = null)
     {
         if (strData.IsNullOrEmpty())
         {
@@ -1620,6 +1692,7 @@ public static class ConfigHandler
 
         if (lstAdd.Count > 0)
         {
+            ReuseMatchedSubscriptionProfileIds(oldProfiles, lstAdd);
             await SQLiteHelper.Instance.InsertAllAsync(lstAdd);
         }
 
@@ -1636,7 +1709,7 @@ public static class ConfigHandler
     /// <param name="subid">Subscription ID to associate with the servers</param>
     /// <param name="isSub">Whether this is from a subscription</param>
     /// <returns>Number of successfully imported servers or -1 if failed</returns>
-    private static async Task<int> AddBatchServers4Custom(Config config, string strData, string subid, bool isSub)
+    private static async Task<int> AddBatchServers4Custom(Config config, string strData, string subid, bool isSub, IEnumerable<ProfileItem>? oldProfiles = null)
     {
         if (strData.IsNullOrEmpty())
         {
@@ -1687,6 +1760,7 @@ public static class ConfigHandler
             }
             if (lstAdd.Count > 0)
             {
+                ReuseMatchedSubscriptionProfileIds(oldProfiles, lstAdd);
                 await SQLiteHelper.Instance.InsertAllAsync(lstAdd);
             }
             if (count > 0)
@@ -1736,7 +1810,7 @@ public static class ConfigHandler
     /// <param name="subid">Subscription ID to associate with the servers</param>
     /// <param name="isSub">Whether this is from a subscription</param>
     /// <returns>Number of successfully imported servers or -1 if failed</returns>
-    private static async Task<int> AddBatchServers4SsSIP008(Config config, string strData, string subid, bool isSub)
+    private static async Task<int> AddBatchServers4SsSIP008(Config config, string strData, string subid, bool isSub, IEnumerable<ProfileItem>? oldProfiles = null)
     {
         if (strData.IsNullOrEmpty())
         {
@@ -1746,6 +1820,7 @@ public static class ConfigHandler
         var lstSsServer = ShadowsocksFmt.ResolveSip008(strData);
         if (lstSsServer?.Count > 0)
         {
+            ReuseMatchedSubscriptionProfileIds(oldProfiles, lstSsServer);
             var counter = 0;
             foreach (var ssItem in lstSsServer)
             {
@@ -1763,7 +1838,7 @@ public static class ConfigHandler
         return -1;
     }
 
-    private static async Task<int> AddBatchServers4Wireguard(Config config, string strData, string subid, bool isSub)
+    private static async Task<int> AddBatchServers4Wireguard(Config config, string strData, string subid, bool isSub, IEnumerable<ProfileItem>? oldProfiles = null)
     {
         if (strData.IsNullOrEmpty())
         {
@@ -1777,6 +1852,7 @@ public static class ConfigHandler
         var lstServer = WireguardFmt.ResolveConfig(strData);
         if (lstServer?.Count > 0)
         {
+            ReuseMatchedSubscriptionProfileIds(oldProfiles, lstServer);
             var counter = 0;
             foreach (var item in lstServer)
             {
@@ -1793,7 +1869,7 @@ public static class ConfigHandler
         return -1;
     }
 
-    private static async Task<int> AddBatchServers4InnerUri(Config config, string strData, string subid, bool isSub)
+    private static async Task<int> AddBatchServers4InnerUri(Config config, string strData, string subid, bool isSub, IEnumerable<ProfileItem>? oldProfiles = null)
     {
         if (strData.IsNullOrEmpty())
         {
@@ -1835,6 +1911,7 @@ public static class ConfigHandler
             }
             if (lstAdd.Count > 0)
             {
+                ReuseMatchedSubscriptionProfileIds(oldProfiles, lstAdd);
                 await SQLiteHelper.Instance.InsertAllAsync(lstAdd);
             }
             await SaveConfig(config);
@@ -1865,47 +1942,47 @@ public static class ConfigHandler
         {
             lstOriSub = await AppManager.Instance.ProfileItems(subid);
             activeProfile = lstOriSub?.FirstOrDefault(t => t.IndexId == config.IndexId);
-            await RemoveServersViaSubid(config, subid, true);
+            await RemoveServersViaSubid(config, subid, true, false);
         }
 
         var counter = 0;
         if (Utils.IsBase64String(strData))
         {
-            counter = await AddBatchServersCommon(config, Utils.Base64Decode(strData), subid, isSub);
+            counter = await AddBatchServersCommon(config, Utils.Base64Decode(strData), subid, isSub, lstOriSub);
         }
         if (counter < 1)
         {
-            counter = await AddBatchServersCommon(config, strData, subid, isSub);
+            counter = await AddBatchServersCommon(config, strData, subid, isSub, lstOriSub);
         }
         if (counter < 1)
         {
-            counter = await AddBatchServersCommon(config, Utils.Base64Decode(strData), subid, isSub);
+            counter = await AddBatchServersCommon(config, Utils.Base64Decode(strData), subid, isSub, lstOriSub);
         }
 
         if (counter < 1)
         {
-            counter = await AddBatchServers4SsSIP008(config, strData, subid, isSub);
+            counter = await AddBatchServers4SsSIP008(config, strData, subid, isSub, lstOriSub);
         }
 
         //maybe wireguard config
         if (counter < 1)
         {
-            counter = await AddBatchServers4Wireguard(config, strData, subid, isSub);
+            counter = await AddBatchServers4Wireguard(config, strData, subid, isSub, lstOriSub);
         }
 
         //May be standard uri mixed with internal uri
         var innerUriCount = 0;
         if (Utils.IsBase64String(strData))
         {
-            innerUriCount = await AddBatchServers4InnerUri(config, Utils.Base64Decode(strData), subid, isSub);
+            innerUriCount = await AddBatchServers4InnerUri(config, Utils.Base64Decode(strData), subid, isSub, lstOriSub);
         }
         if (innerUriCount < 1)
         {
-            innerUriCount = await AddBatchServers4InnerUri(config, strData, subid, isSub);
+            innerUriCount = await AddBatchServers4InnerUri(config, strData, subid, isSub, lstOriSub);
         }
         if (innerUriCount < 1)
         {
-            innerUriCount = await AddBatchServers4InnerUri(config, Utils.Base64Decode(strData), subid, isSub);
+            innerUriCount = await AddBatchServers4InnerUri(config, Utils.Base64Decode(strData), subid, isSub, lstOriSub);
         }
         if (innerUriCount > 0)
         {
@@ -1922,7 +1999,25 @@ public static class ConfigHandler
         //maybe other sub
         if (counter < 1)
         {
-            counter = await AddBatchServers4Custom(config, strData, subid, isSub);
+            counter = await AddBatchServers4Custom(config, strData, subid, isSub, lstOriSub);
+        }
+
+        if (counter < 1)
+        {
+            if (lstOriSub is { Count: > 0 })
+            {
+                await SQLiteHelper.Instance.InsertAllAsync(lstOriSub);
+                if (activeProfile != null)
+                {
+                    await ConfigHandler.SetDefaultServerIndex(config, activeProfile.IndexId);
+                }
+            }
+            return counter;
+        }
+
+        if (lstOriSub is { Count: > 0 })
+        {
+            DeleteCustomProfileFiles(lstOriSub, await AppManager.Instance.ProfileItems(subid));
         }
 
         //Select active node
@@ -2060,7 +2155,7 @@ public static class ConfigHandler
     /// <param name="subid">Subscription ID</param>
     /// <param name="isSub">Whether to only remove servers marked as subscription items</param>
     /// <returns>0 if successful, -1 if failed</returns>
-    public static async Task<int> RemoveServersViaSubid(Config config, string subid, bool isSub)
+    public static async Task<int> RemoveServersViaSubid(Config config, string subid, bool isSub, bool deleteCustomFiles = true)
     {
         if (subid.IsNullOrEmpty())
         {
@@ -2075,12 +2170,36 @@ public static class ConfigHandler
         {
             await SQLiteHelper.Instance.ExecuteAsync($"delete from ProfileItem where subid = '{subid}'");
         }
-        foreach (var item in customProfile)
+        if (deleteCustomFiles)
         {
-            File.Delete(Utils.GetConfigPath(item.Address));
+            DeleteCustomProfileFiles(customProfile, null);
         }
 
         return 0;
+    }
+
+    private static void DeleteCustomProfileFiles(IEnumerable<ProfileItem>? oldProfiles, IEnumerable<ProfileItem>? newProfiles)
+    {
+        if (oldProfiles == null)
+        {
+            return;
+        }
+
+        var activeCustomFiles = (newProfiles ?? [])
+            .Where(t => t.ConfigType == EConfigType.Custom)
+            .Select(t => Utils.GetConfigPath(t.Address))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in oldProfiles.Where(t => t.ConfigType == EConfigType.Custom))
+        {
+            var fileName = Utils.GetConfigPath(item.Address);
+            if (activeCustomFiles.Contains(fileName))
+            {
+                continue;
+            }
+
+            File.Delete(fileName);
+        }
     }
 
     /// <summary>
