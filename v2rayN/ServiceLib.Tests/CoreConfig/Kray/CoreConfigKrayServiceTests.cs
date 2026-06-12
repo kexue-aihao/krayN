@@ -1,4 +1,6 @@
 using AwesomeAssertions;
+using ServiceLib.Handler;
+using ServiceLib.Models.Dto;
 using ServiceLib.Services.CoreConfig;
 using Xunit;
 
@@ -50,5 +52,40 @@ public class CoreConfigKrayServiceTests
         var root = JsonUtils.ParseJson(result.Data!.ToString())!.AsObject();
         root["local"]!["socks_address"]!.GetValue<string>().Should().Be("127.0.0.1:11223");
         root["local"]!["api_address"]!.GetValue<string>().Should().Be("127.0.0.1:19727");
+    }
+
+    [Fact]
+    public async Task GenerateClientSpeedtestConfig_ShouldAllowKrayRealPing()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.kray);
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+        var node = CoreConfigTestFactory.CreateKrayNode();
+        var context = CoreConfigTestFactory.CreateContext(config, node, ECoreType.kray);
+        var testItem = new ServerTestItem
+        {
+            IndexId = node.IndexId,
+            Address = node.Address,
+            Port = node.Port,
+            ConfigType = node.ConfigType,
+            QueueNum = 0,
+            Profile = node,
+            CoreType = ECoreType.kray,
+        };
+        var fileName = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.json");
+        try
+        {
+            var result = await CoreConfigHandler.GenerateClientSpeedtestConfig(config, context, testItem, fileName);
+
+            result.Success.Should().BeTrue($"ret msg: {result.Msg}");
+            testItem.AllowTest.Should().BeTrue();
+            testItem.Port.Should().BeGreaterThan(0);
+        }
+        finally
+        {
+            if (File.Exists(fileName))
+            {
+                File.Delete(fileName);
+            }
+        }
     }
 }

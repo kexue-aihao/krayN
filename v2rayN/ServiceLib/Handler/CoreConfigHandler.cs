@@ -128,6 +128,10 @@ public static class CoreConfigHandler
             var apiPort = Utils.GetFreePort(AppManager.Instance.GetLocalPort(EInboundProtocol.api) + testItem.QueueNum + 1);
             testItem.Port = port;
             result = new CoreConfigKrayService(context with { Node = testItem.Profile }).GenerateClientConfigContent(port, apiPort);
+            if (result.Success == true)
+            {
+                testItem.AllowTest = true;
+            }
         }
         if (result.Success != true)
         {
@@ -152,6 +156,10 @@ public static class CoreConfigHandler
         else if (context.RunCoreType == ECoreType.kray)
         {
             result = new CoreConfigKrayService(context).GenerateClientConfigContent(port, apiPort);
+            if (result.Success == true)
+            {
+                testItem.AllowTest = true;
+            }
         }
         else
         {
