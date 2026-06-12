@@ -608,11 +608,29 @@ jobs:
           path: dist/release
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.prepare.outputs.tag }}
-          name: krayN ${{ needs.prepare.outputs.version }}
-          draft: false
-          prerelease: ${{ contains(needs.prepare.outputs.version, '-') }}
-          generate_release_notes: true
-          files: dist/release/*
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PRERELEASE: ${{ contains(needs.prepare.outputs.version, '-') }}
+        run: |
+          set -euo pipefail
+          release_args=(--repo "${GITHUB_REPOSITORY}" --title "krayN ${VERSION}")
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+          if gh release view "${TAG_NAME}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit "${TAG_NAME}" "${release_args[@]}"
+          else
+            gh release create "${TAG_NAME}" "${release_args[@]}" --generate-notes
+          fi
+
+          mapfile -t assets < <(find dist/release -maxdepth 1 -type f | sort)
+          if [[ "${#assets[@]}" -eq 0 ]]; then
+            echo "No release assets found" >&2
+            exit 1
+          fi
+          for asset in "${assets[@]}"; do
+            echo "Uploading ${asset}"
+            gh release upload "${TAG_NAME}" "${asset}" --repo "${GITHUB_REPOSITORY}" --clobber
+          done

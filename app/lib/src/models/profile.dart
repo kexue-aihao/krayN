@@ -41,8 +41,14 @@ class Profile {
       group: json['group'] as String? ?? '',
       transport: json['transport'] as String? ?? 'tcp',
       endpoint: json['endpoint'] as String? ?? '',
-      clientId: json['client_id'] as String? ?? '',
-      clientSecret: json['client_secret'] as String? ?? '',
+      clientId: _firstJsonString(
+        json,
+        ['client_id', 'clientId', 'uuid', 'user_uuid', 'user_id'],
+      ),
+      clientSecret: _firstJsonString(
+        json,
+        ['kless_client_secret', 'klessClientSecret', 'client_secret', 'clientSecret'],
+      ),
       serverPublicKey: json['server_public_key'] as String? ?? '',
       serverName: json['server_name'] as String? ?? '',
       skipTlsVerify: json['skip_tls_verify'] as bool? ?? false,
@@ -119,5 +125,19 @@ class Profile {
     clientSecret: '',
     serverPublicKey: '',
   );
+
+  static String _firstJsonString(Map<String, dynamic> json, List<String> keys) {
+    for (final key in keys) {
+      final value = json[key];
+      if (value == null) {
+        continue;
+      }
+      final text = '$value'.trim();
+      if (text.isNotEmpty) {
+        return text;
+      }
+    }
+    return '';
+  }
 }
 

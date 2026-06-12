@@ -154,6 +154,58 @@ func TestDialContextAcceptsURLSafeKLESSKeys(t *testing.T) {
 	}
 }
 
+func TestDialContextPreservesDomainTargetsForRemoteResolution(t *testing.T) {
+	serverPublic, serverPrivate, err := kless.GenerateServerIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientSecret, err := kless.GenerateClientSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	klessListener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer klessListener.Close()
+	targetCh := make(chan proxy.Target, 1)
+	go serveRelayCaptureTarget(t, klessListener, serverPrivate, clientSecret, targetCh)
+
+	cfg := config.Default()
+	cfg.Local.ResolverType = "dns"
+	cfg.Local.ResolverAddress = startPoisonDNS(t, net.ParseIP("31.13.92.37"))
+	profile := config.UpsertProfile(&cfg, config.Profile{
+		Name:            "test",
+		Transport:       "tcp",
+		Endpoint:        klessListener.Addr().String(),
+		ClientID:        "test-client",
+		ClientSecret:    kless.EncodeKey(clientSecret),
+		ServerPublicKey: kless.EncodeKey(serverPublic),
+	})
+	cfg.ActiveProfileID = profile.ID
+	appEngine := &Engine{
+		cfg:    cfg,
+		stats:  nil,
+		status: StatusStopped,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, err = appEngine.DialContext(ctx, proxy.Target{Host: "www.google.com", Port: 443})
+	if err == nil || !strings.Contains(err.Error(), "test complete") {
+		t.Fatalf("expected relay rejection after capture, got %v", err)
+	}
+
+	select {
+	case got := <-targetCh:
+		if got.Host != "www.google.com" || got.Port != 443 {
+			t.Fatalf("target should preserve domain for remote resolution, got %+v", got)
+		}
+	case <-ctx.Done():
+		t.Fatal("timed out waiting for relay target")
+	}
+}
+
 func TestDialContextReportsKnodeRelayHintOnHandshakeEOF(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -320,4 +372,79 @@ func serveRelay(t *testing.T, listener net.Listener, private ed25519.PrivateKey,
 		done <- struct{}{}
 	}()
 	<-done
+}
+
+func serveRelayCaptureTarget(t *testing.T, listener net.Listener, private ed25519.PrivateKey, clientSecret []byte, targetCh chan<- proxy.Target) {
+	t.Helper()
+	raw, err := listener.Accept()
+	if err != nil {
+		return
+	}
+	defer raw.Close()
+	conn, _, err := kless.ServerHandshake(raw, kless.ServerConfig{
+		SigningKey:  private,
+		ClientStore: kless.StaticClientStore{"test-client": clientSecret},
+	})
+	if err != nil {
+		t.Errorf("server handshake: %v", err)
+		return
+	}
+	defer conn.Close()
+	target, err := proxy.ReadConnectRequest(conn)
+	if err != nil {
+		t.Errorf("read connect request: %v", err)
+		return
+	}
+	targetCh <- target
+	_ = proxy.WriteConnectResponse(conn, "test complete")
+}
+
+func startPoisonDNS(t *testing.T, ip net.IP) string {
+	t.Helper()
+	ip4 := ip.To4()
+	if ip4 == nil {
+		t.Fatal("poison DNS test requires IPv4")
+	}
+	packetConn, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = packetConn.Close()
+	})
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, addr, err := packetConn.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			response, ok := poisonDNSResponse(buf[:n], ip4)
+			if !ok {
+				continue
+			}
+			_, _ = packetConn.WriteTo(response, addr)
+		}
+	}()
+	return packetConn.LocalAddr().String()
+}
+
+func poisonDNSResponse(query []byte, ip net.IP) ([]byte, bool) {
+	if len(query) < 12 {
+		return nil, false
+	}
+	questionEnd := 12
+	for questionEnd < len(query) && query[questionEnd] != 0 {
+		questionEnd += int(query[questionEnd]) + 1
+	}
+	questionEnd += 5
+	if questionEnd > len(query) {
+		return nil, false
+	}
+	resp := make([]byte, 0, questionEnd+16)
+	resp = append(resp, query[0], query[1], 0x81, 0x80, 0, 1, 0, 1, 0, 0, 0, 0)
+	resp = append(resp, query[12:questionEnd]...)
+	resp = append(resp, 0xc0, 0x0c, 0, 1, 0, 1, 0, 0, 0, 30, 0, 4)
+	resp = append(resp, ip.To4()...)
+	return resp, true
 }

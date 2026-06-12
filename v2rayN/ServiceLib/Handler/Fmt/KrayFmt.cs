@@ -22,7 +22,8 @@ public class KrayFmt : BaseFmt
                 Address = url.IdnHost,
                 Port = url.Port,
                 Username = Uri.UnescapeDataString(url.UserInfo ?? string.Empty),
-                Password = GetQueryDecoded(query, "client_secret", GetQueryDecoded(query, "secret")),
+                Password = GetQueryDecoded(query, "kless_client_secret",
+                    GetQueryDecoded(query, "client_secret", GetQueryDecoded(query, "secret"))),
                 PublicKey = GetQueryDecoded(query, "server_public_key",
                     GetQueryDecoded(query, "server_signing_key", GetQueryDecoded(query, "serverSigningKey", GetQueryDecoded(query, "pbk")))),
                 Remarks = Utils.UrlDecode(url.GetComponents(UriComponents.Fragment, UriFormat.Unescaped)),
@@ -163,8 +164,9 @@ public class KrayFmt : BaseFmt
             Remarks = name,
             Address = host,
             Port = port,
-            Username = GetJsonString(obj, "client_id", "clientId", "username"),
-            Password = GetJsonString(obj, "client_secret", "clientSecret", "password"),
+            Username = GetJsonString(obj, "kless_client_id", "klessClientId",
+                "client_id", "clientId", "username", "uuid", "user_uuid", "userId", "user_id"),
+            Password = GetJsonString(obj, "kless_client_secret", "klessClientSecret", "client_secret", "clientSecret", "password"),
             PublicKey = GetJsonString(obj, "server_public_key", "server_signing_key",
                 "serverPublicKey", "serverSigningKey", "public_key"),
             Network = NormalizeKrayTransport(GetJsonString(obj, "transport", "network", "type")),
@@ -239,9 +241,17 @@ public class KrayFmt : BaseFmt
     {
         foreach (var key in keys)
         {
-            if (obj.TryGetPropertyValue(key, out var value) && value is JsonValue jsonValue && jsonValue.TryGetValue(out string? text))
+            if (!obj.TryGetPropertyValue(key, out var value) || value is not JsonValue jsonValue)
             {
-                return text ?? string.Empty;
+                continue;
+            }
+            if (jsonValue.TryGetValue(out string? text) && text.IsNotEmpty())
+            {
+                return text;
+            }
+            if (jsonValue.TryGetValue(out long number))
+            {
+                return number.ToString();
             }
         }
         return string.Empty;

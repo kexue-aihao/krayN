@@ -414,11 +414,6 @@ func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile,
 	if err != nil {
 		return nil, fmt.Errorf("dial kless transport: %w", err)
 	}
-	target, err = resolveProxyTarget(ctx, target, newResolver(local))
-	if err != nil {
-		_ = raw.Close()
-		return nil, fmt.Errorf("resolve proxy target: %w", err)
-	}
 	secure, err := e.clientHandshake(raw, profile)
 	if err != nil {
 		_ = raw.Close()

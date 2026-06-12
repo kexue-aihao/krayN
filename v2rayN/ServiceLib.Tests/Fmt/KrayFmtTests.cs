@@ -100,4 +100,29 @@ public class KrayFmtTests
         item.Should().NotBeNull($"msg: {msg}");
         item!.PublicKey.Should().Be("YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY");
     }
+
+    [Fact]
+    public void ResolveJsonSubscription_ShouldPreferKlessClientSecret()
+    {
+        const string payload = """
+        {
+          "profiles": [
+            {
+              "name": "jp-01",
+              "endpoint": "kray.example:8443",
+              "user_id": 1001,
+              "client_secret": "panel-secret-should-not-be-used",
+              "kless_client_secret": "MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE",
+              "server_signing_key": "YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXpBQkNERUY"
+            }
+          ]
+        }
+        """;
+
+        var items = KrayFmt.ResolveJsonSubscription(payload, "sub");
+
+        items.Should().NotBeNull();
+        items![0].Username.Should().Be("1001");
+        items[0].Password.Should().Be("MDEyMzQ1Njc4OTAxMjM0NTY3ODkwMTIzNDU2Nzg5MDE");
+    }
 }

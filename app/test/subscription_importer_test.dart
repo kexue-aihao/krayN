@@ -40,6 +40,26 @@ void main() {
     expect(profiles.single.clientId, 'client-id');
   });
 
+  test('prefers KLESS client secret fields from Kboard subscriptions', () {
+    final profiles = SubscriptionImporter.parseProfiles(
+      jsonEncode({
+        'profiles': [
+          {
+            ...profileJson,
+            'client_id': null,
+            'user_id': 1001,
+            'client_secret': 'panel-secret',
+            'kless_client_secret': 'kless-secret',
+          },
+        ],
+      }),
+    );
+
+    expect(profiles, hasLength(1));
+    expect(profiles.single.clientId, '1001');
+    expect(profiles.single.clientSecret, 'kless-secret');
+  });
+
   test('rejects unsupported subscriptions', () {
     expect(
       () => SubscriptionImporter.parseProfiles('not a subscription'),
