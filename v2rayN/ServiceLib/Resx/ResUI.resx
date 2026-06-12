@@ -1761,6 +1761,9 @@ The "Get Certificate" action may fail if a self-signed certificate is used or if
   <data name="MsgTunRouteExcludeInvalidAddress" xml:space="preserve">
     <value>Invalid address in TUN route exclude list: {0}</value>
   </data>
+  <data name="MsgKrayTunNotSupported" xml:space="preserve">
+    <value>The current kray KLESS core does not support TUN mode yet. Use system proxy or the local SOCKS port instead.</value>
+  </data>
   <data name="MsgOptionsConflict" xml:space="preserve">
     <value>Conflict between {0} and {1}</value>
   </data>

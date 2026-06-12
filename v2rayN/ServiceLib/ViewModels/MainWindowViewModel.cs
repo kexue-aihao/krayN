@@ -581,6 +581,14 @@ public class MainWindowViewModel : MyReactiveObject
                 }
                 return;
             }
+            if (_config.TunModeItem.EnableTun
+                && AppManager.Instance.GetCoreType(profileItem, profileItem.ConfigType) == ECoreType.kray)
+            {
+                _config.TunModeItem.EnableTun = false;
+                await ConfigHandler.SaveConfig(_config);
+                NoticeManager.Instance.SendMessageAndEnqueue(ResUI.MsgKrayTunNotSupported);
+                AppEvents.InboundDisplayRequested.Publish();
+            }
             var allResult = await CoreConfigContextBuilder.BuildAll(_config, profileItem);
             if (NoticeManager.Instance.NotifyValidatorResult(allResult.CombinedValidatorResult) && !allResult.Success)
             {

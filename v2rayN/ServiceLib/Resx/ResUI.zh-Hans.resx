@@ -1758,6 +1758,9 @@
   <data name="MsgTunRouteExcludeInvalidAddress" xml:space="preserve">
     <value>TUN 路由排除列表包含无效地址：{0}</value>
   </data>
+  <data name="MsgKrayTunNotSupported" xml:space="preserve">
+    <value>当前 kray KLESS 核心暂不支持 TUN 模式，请使用系统代理或本地 SOCKS 端口。</value>
+  </data>
   <data name="MsgOptionsConflict" xml:space="preserve">
     <value>{0} 与 {1} 冲突</value>
   </data>

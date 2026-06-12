@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using ServiceLib.Enums;
+using ServiceLib.Handler;
 using ServiceLib.Handler.Builder;
 using ServiceLib.Helper;
 using ServiceLib.Models;
@@ -9,6 +10,21 @@ namespace ServiceLib.Tests.CoreConfig.Context;
 
 public class CoreConfigContextBuilderTests
 {
+    [Fact]
+    public void GetPreSocksItem_KrayTun_ShouldNotUseSingboxBridge()
+    {
+        var config = CoreConfigTestFactory.CreateConfig();
+        config.TunModeItem.EnableTun = true;
+        config.TunModeItem.EnableLegacyProtect = true;
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+
+        var node = CoreConfigTestFactory.CreateKrayNode();
+
+        var preSocks = ConfigHandler.GetPreSocksItem(config, node, ECoreType.kray);
+
+        preSocks.Should().BeNull();
+    }
+
     [Fact]
     public async Task ResolveNodeAsync_DirectCycleDependency_ShouldFailWithCycleError()
     {

@@ -1554,6 +1554,7 @@ public static class ConfigHandler
                                   || Utils.IsNonWindows();
         if (node.ConfigType != EConfigType.Custom
             && coreType != ECoreType.sing_box
+            && coreType != ECoreType.kray
             && config.TunModeItem.EnableTun
             && enableLegacyProtect)
         {

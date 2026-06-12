@@ -2248,6 +2248,15 @@ namespace ServiceLib.Resx {
         }
         
         /// <summary>
+        ///   查找类似 The current kray KLESS core does not support TUN mode yet. Use system proxy or the local SOCKS port instead. 的本地化字符串。
+        /// </summary>
+        public static string MsgKrayTunNotSupported {
+            get {
+                return ResourceManager.GetString("MsgKrayTunNotSupported", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   查找类似 Unpacking... 的本地化字符串。
         /// </summary>
         public static string MsgUnpacking {

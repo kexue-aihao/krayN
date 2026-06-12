@@ -231,6 +231,12 @@ public class StatusBarViewModel : MyReactiveObject
     private async Task Init()
     {
         await ConfigHandler.InitBuiltinRouting(_config);
+        if (_config.TunModeItem.EnableTun && await IsTunSupportedForCurrentServer() == false)
+        {
+            _config.TunModeItem.EnableTun = EnableTun = false;
+            await ConfigHandler.SaveConfig(_config);
+            NoticeManager.Instance.SendMessageAndEnqueue(ResUI.MsgKrayTunNotSupported);
+        }
         await RefreshRoutingsMenu();
         await InboundDisplayStatus();
         await ChangeSystemProxyAsync(_config.SystemProxyItem.SysProxyType, true);
@@ -473,6 +479,15 @@ public class StatusBarViewModel : MyReactiveObject
 
         _config.TunModeItem.EnableTun = EnableTun;
 
+        if (EnableTun && await IsTunSupportedForCurrentServer() == false)
+        {
+            _config.TunModeItem.EnableTun = false;
+            EnableTun = false;
+            await ConfigHandler.SaveConfig(_config);
+            NoticeManager.Instance.SendMessageAndEnqueue(ResUI.MsgKrayTunNotSupported);
+            return;
+        }
+
         if (EnableTun && AllowEnableTun() == false)
         {
             // When running as a non-administrator, reboot to administrator mode
@@ -512,6 +527,18 @@ public class StatusBarViewModel : MyReactiveObject
             return AppManager.Instance.LinuxSudoPwd.IsNotEmpty();
         }
         return false;
+    }
+
+    private async Task<bool> IsTunSupportedForCurrentServer()
+    {
+        var item = await ConfigHandler.GetDefaultServer(_config);
+        if (item == null)
+        {
+            return true;
+        }
+
+        var coreType = AppManager.Instance.GetCoreType(item, item.ConfigType);
+        return coreType != ECoreType.kray;
     }
 
     #endregion System proxy and Routings
