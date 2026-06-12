@@ -6,6 +6,8 @@ internal class IPAPIInfo
     public string? clientIp { get; set; }
     public string? ip_addr { get; set; }
     public string? query { get; set; }
+    public string? ipAddress { get; set; }
+    public string? address { get; set; }
     public string? country { get; set; }
     public string? country_name { get; set; }
     public string? country_code { get; set; }

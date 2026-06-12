@@ -408,10 +408,17 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
     private async Task<int> DoRealPing(ServerTestItem it)
     {
         var webProxy = new WebProxy($"socks5://{Global.Loopback}:{it.Port}");
-        var responseTime = await ConnectionHandler.GetRealPingTime(webProxy, 10);
+        var diagnostic = it.ConfigType == EConfigType.KLESS
+            ? await MeasureKrayDiagnostics(it, webProxy)
+            : null;
+        var responseTime = diagnostic?.HttpsMs ?? await ConnectionHandler.GetRealPingTime(webProxy, 10);
 
         ProfileExManager.Instance.SetTestDelay(it.IndexId, responseTime);
         await UpdateFunc(it.IndexId, responseTime > 0 ? responseTime.ToString() : RealPingFailed);
+        if (diagnostic is not null)
+        {
+            await UpdateFunc(it.IndexId, "", "", diagnostic.RttDisplay, diagnostic.HttpsDisplay, diagnostic.JitterDisplay);
+        }
 
         if (responseTime > 0)
         {
@@ -444,6 +451,33 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
             }
             await UpdateFunc(it.IndexId, "", msg);
         });
+    }
+
+    private async Task<KrayDiagnosticStats> MeasureKrayDiagnostics(ServerTestItem it, IWebProxy? webProxy)
+    {
+        var rttSamples = new List<int>();
+        if (it.Address.IsNotEmpty())
+        {
+            for (var i = 0; i < 10; i++)
+            {
+                try
+                {
+                    var rtt = await GetTcpingTime(it.Address, it.Profile?.Port > 0 ? it.Profile.Port : it.Port);
+                    if (rtt > 0)
+                    {
+                        rttSamples.Add(rtt);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logging.SaveLog(_tag, ex);
+                }
+                await Task.Delay(100);
+            }
+        }
+
+        var httpsMs = await ConnectionHandler.GetRealPingTime(webProxy, 10);
+        return KrayDiagnosticStats.FromSamples(rttSamples, httpsMs);
     }
 
     private async Task<int> DoUdpTest(ServerTestItem it)
@@ -514,9 +548,9 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
         return lstTest;
     }
 
-    private async Task UpdateFunc(string indexId, string delay, string speed = "")
+    private async Task UpdateFunc(string indexId, string delay, string speed = "", string rtt = "", string https = "", string jitter = "")
     {
-        await _updateFunc?.Invoke(new() { IndexId = indexId, Delay = delay, Speed = speed });
+        await _updateFunc?.Invoke(new() { IndexId = indexId, Delay = delay, Speed = speed, Rtt = rtt, Https = https, Jitter = jitter });
         if (indexId.IsNotEmpty() && speed.IsNotEmpty())
         {
             ProfileExManager.Instance.SetTestMessage(indexId, speed);
@@ -526,5 +560,26 @@ public class SpeedtestService(Config config, Func<SpeedTestResult, Task> updateF
     private async Task UpdateIpInfoFunc(string indexId, string ip)
     {
         await _updateFunc?.Invoke(new() { IndexId = indexId, IpInfo = ip });
+    }
+
+    private sealed record KrayDiagnosticStats(int RttAverageMs, int HttpsMs, int JitterMs)
+    {
+        public string RttDisplay => RttAverageMs > 0 ? RttAverageMs.ToString() : RealPingFailed;
+        public string HttpsDisplay => HttpsMs > 0 ? HttpsMs.ToString() : RealPingFailed;
+        public string JitterDisplay => JitterMs >= 0 ? JitterMs.ToString() : RealPingFailed;
+
+        public static KrayDiagnosticStats FromSamples(IReadOnlyList<int> samples, int httpsMs)
+        {
+            if (samples.Count == 0)
+            {
+                return new KrayDiagnosticStats(-1, httpsMs, -1);
+            }
+            var average = samples.Average();
+            var variance = samples.Sum(value => Math.Pow(value - average, 2)) / samples.Count;
+            return new KrayDiagnosticStats(
+                (int)Math.Round(average, MidpointRounding.AwayFromZero),
+                httpsMs,
+                (int)Math.Round(Math.Sqrt(variance), MidpointRounding.AwayFromZero));
+        }
     }
 }

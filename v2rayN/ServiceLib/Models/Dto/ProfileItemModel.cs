@@ -30,6 +30,15 @@ public class ProfileItemModel : ReactiveObject
     public string IpInfo { get; set; }
 
     [Reactive]
+    public string RttVal { get; set; }
+
+    [Reactive]
+    public string HttpsVal { get; set; }
+
+    [Reactive]
+    public string JitterVal { get; set; }
+
+    [Reactive]
     public string TodayUp { get; set; }
 
     [Reactive]

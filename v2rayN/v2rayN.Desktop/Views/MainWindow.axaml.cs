@@ -487,19 +487,13 @@ public partial class MainWindow : WindowBase<MainWindowViewModel>
 
     private void AddHelpMenuItem()
     {
-        var coreInfo = CoreInfoManager.Instance.GetCoreInfo();
-        foreach (var it in coreInfo
-            .Where(t => t.CoreType is not ECoreType.v2fly
-                        and not ECoreType.hysteria))
+        var item = new MenuItem()
         {
-            var item = new MenuItem()
-            {
-                Tag = it.Url?.Replace(@"/releases", ""),
-                Header = string.Format(ResUI.menuWebsiteItem, it.CoreType.ToString().Replace("_", " ")).UpperFirstChar()
-            };
-            item.Click += MenuItem_Click;
-            menuHelp.Items.Add(item);
-        }
+            Tag = "https://github.com/kexue-aihao/krayN/releases",
+            Header = "krayN 官网"
+        };
+        item.Click += MenuItem_Click;
+        menuHelp.Items.Add(item);
     }
 
     private void MenuItem_Click(object? sender, RoutedEventArgs e)

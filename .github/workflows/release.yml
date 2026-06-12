@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      assembly_version: ${{ steps.meta.outputs.assembly_version }}
       tag: ${{ steps.meta.outputs.tag }}
     steps:
       - name: Resolve release metadata
@@ -40,7 +41,14 @@ jobs:
             version="0.0.0-${GITHUB_SHA::7}"
             tag="nightly-${GITHUB_SHA::7}"
           fi
+          assembly_version="$(echo "${version}" | sed -E 's/[^0-9.].*$//')"
+          IFS='.' read -r major minor patch _ <<< "${assembly_version}"
+          major="${major:-0}"
+          minor="${minor:-0}"
+          patch="${patch:-0}"
+          assembly_version="${major}.${minor}.${patch}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+          echo "assembly_version=${assembly_version}" >> "${GITHUB_OUTPUT}"
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
   core:
@@ -181,6 +189,10 @@ jobs:
             -c Release `
             -r ${{ matrix.rid }} `
             --self-contained true `
+            -p:Version=${{ needs.prepare.outputs.version }} `
+            -p:FileVersion=${{ needs.prepare.outputs.assembly_version }} `
+            -p:AssemblyVersion=${{ needs.prepare.outputs.assembly_version }} `
+            -p:InformationalVersion=${{ needs.prepare.outputs.version }} `
             -o dist\publish\windows-${{ matrix.arch }}
 
       - name: Stage Windows package
@@ -437,6 +449,10 @@ jobs:
             -c Release \
             -r ${{ matrix.rid }} \
             --self-contained true \
+            -p:Version=${{ needs.prepare.outputs.version }} \
+            -p:FileVersion=${{ needs.prepare.outputs.assembly_version }} \
+            -p:AssemblyVersion=${{ needs.prepare.outputs.assembly_version }} \
+            -p:InformationalVersion=${{ needs.prepare.outputs.version }} \
             -o dist/publish/linux-${{ matrix.arch }}
 
       - name: Stage Linux packages
@@ -520,6 +536,10 @@ jobs:
             -c Release \
             -r ${{ matrix.rid }} \
             --self-contained true \
+            -p:Version=${{ needs.prepare.outputs.version }} \
+            -p:FileVersion=${{ needs.prepare.outputs.assembly_version }} \
+            -p:AssemblyVersion=${{ needs.prepare.outputs.assembly_version }} \
+            -p:InformationalVersion=${{ needs.prepare.outputs.version }} \
             -o dist/publish/macos-${{ matrix.arch }}
 
       - name: Build macOS app and DMG

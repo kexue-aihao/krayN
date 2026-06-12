@@ -52,24 +52,9 @@ public sealed class CoreInfoManager
 
     public List<ECoreType> GetCheckUpdateCoreTypes()
     {
-        var lst = new List<ECoreType>();
-
-        if (RuntimeInformation.ProcessArchitecture != Architecture.X86)
-        {
-            if (IsCheckUpdateSupported(ECoreType.v2rayN))
-            {
-                lst.Add(ECoreType.v2rayN);
-            }
-
-            if (!(Utils.IsWindows() && Environment.OSVersion.Version.Major < 10))
-            {
-                lst.Add(ECoreType.Xray);
-                lst.Add(ECoreType.mihomo);
-                lst.Add(ECoreType.sing_box);
-            }
-        }
-
-        return lst;
+        return RuntimeInformation.ProcessArchitecture != Architecture.X86 && IsCheckUpdateSupported(ECoreType.v2rayN)
+            ? [ECoreType.v2rayN]
+            : [];
     }
 
     public bool IsCheckUpdateSupported(ECoreType type)
@@ -77,9 +62,6 @@ public sealed class CoreInfoManager
         return type switch
         {
             ECoreType.v2rayN => !Utils.IsPackagedInstall(),
-            ECoreType.Xray => true,
-            ECoreType.mihomo => true,
-            ECoreType.sing_box => true,
             _ => false,
         };
     }
@@ -96,7 +78,7 @@ public sealed class CoreInfoManager
 
     private void InitCoreInfo()
     {
-        var urlN = GetCoreUrl(ECoreType.v2rayN);
+        var urlN = GetCoreUrl(ECoreType.kray);
         var urlXray = GetCoreUrl(ECoreType.Xray);
         var urlMihomo = GetCoreUrl(ECoreType.mihomo);
         var urlSingbox = GetCoreUrl(ECoreType.sing_box);

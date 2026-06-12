@@ -307,6 +307,18 @@ public class ProfilesViewModel : MyReactiveObject
         {
             item.IpInfo = result.IpInfo ?? string.Empty;
         }
+        if (result.Rtt.IsNotEmpty())
+        {
+            item.RttVal = result.Rtt ?? string.Empty;
+        }
+        if (result.Https.IsNotEmpty())
+        {
+            item.HttpsVal = result.Https ?? string.Empty;
+        }
+        if (result.Jitter.IsNotEmpty())
+        {
+            item.JitterVal = result.Jitter ?? string.Empty;
+        }
         await Task.CompletedTask;
     }
 
@@ -442,6 +454,9 @@ public class ProfilesViewModel : MyReactiveObject
                         DelayVal = t33?.Delay != 0 ? $"{t33?.Delay}" : string.Empty,
                         SpeedVal = t33?.Speed > 0 ? $"{t33?.Speed}" : t33?.Message ?? string.Empty,
                         IpInfo = t33?.IpInfo ?? string.Empty,
+                        RttVal = string.Empty,
+                        HttpsVal = string.Empty,
+                        JitterVal = string.Empty,
                         TodayDown = t22 == null ? "" : Utils.HumanFy(t22.TodayDown),
                         TodayUp = t22 == null ? "" : Utils.HumanFy(t22.TodayUp),
                         TotalDown = t22 == null ? "" : Utils.HumanFy(t22.TotalDown),

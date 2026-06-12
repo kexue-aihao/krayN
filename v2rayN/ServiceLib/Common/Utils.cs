@@ -750,7 +750,19 @@ public class Utils
     {
         try
         {
-            return Assembly.GetExecutingAssembly()?.GetName()?.Version?.ToString(3) ?? "0.0";
+            var assembly = Assembly.GetExecutingAssembly();
+            var informationalVersion = assembly?
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion;
+            if (informationalVersion.IsNotEmpty())
+            {
+                var version = informationalVersion.Split('+', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+                if (version.IsNotEmpty())
+                {
+                    return version;
+                }
+            }
+            return assembly?.GetName()?.Version?.ToString(3) ?? "0.0";
         }
         catch (Exception ex)
         {

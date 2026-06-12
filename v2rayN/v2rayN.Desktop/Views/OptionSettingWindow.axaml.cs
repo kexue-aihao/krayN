@@ -37,14 +37,6 @@ public partial class OptionSettingWindow : WindowBase<OptionSettingViewModel>
         cmbStack.ItemsSource = Global.TunStacks;
         cmbIcmpRoutingPolicy.ItemsSource = Global.TunIcmpRoutingPolicies;
 
-        cmbCoreType1.ItemsSource = Global.CoreTypes;
-        cmbCoreType2.ItemsSource = Global.CoreTypes;
-        cmbCoreType3.ItemsSource = Global.CoreTypes;
-        cmbCoreType4.ItemsSource = Global.CoreTypes;
-        cmbCoreType5.ItemsSource = Global.CoreTypes;
-        cmbCoreType6.ItemsSource = Global.CoreTypes;
-        cmbCoreType7.ItemsSource = Global.CoreTypes;
-        cmbCoreType9.ItemsSource = Global.CoreTypes;
         cmbCoreType13.ItemsSource = Global.CoreTypes;
 
         cmbMixedConcurrencyCount.ItemsSource = Enumerable.Range(2, 7).ToList();
@@ -124,14 +116,6 @@ public partial class OptionSettingWindow : WindowBase<OptionSettingViewModel>
             this.Bind(ViewModel, vm => vm.TunEnableLegacyProtect, v => v.togEnableLegacyProtect.IsChecked).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.TunRouteExcludeAddress, v => v.txtRouteExcludeAddress.Text).DisposeWith(disposables);
 
-            this.Bind(ViewModel, vm => vm.CoreType1, v => v.cmbCoreType1.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType2, v => v.cmbCoreType2.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType3, v => v.cmbCoreType3.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType4, v => v.cmbCoreType4.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType5, v => v.cmbCoreType5.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType6, v => v.cmbCoreType6.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType7, v => v.cmbCoreType7.SelectedValue).DisposeWith(disposables);
-            this.Bind(ViewModel, vm => vm.CoreType9, v => v.cmbCoreType9.SelectedValue).DisposeWith(disposables);
             this.Bind(ViewModel, vm => vm.CoreType13, v => v.cmbCoreType13.SelectedValue).DisposeWith(disposables);
 
             this.BindCommand(ViewModel, vm => vm.SaveCmd, v => v.btnSave).DisposeWith(disposables);

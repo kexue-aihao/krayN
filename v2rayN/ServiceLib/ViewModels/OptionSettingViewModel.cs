@@ -249,11 +249,12 @@ public class OptionSettingViewModel : MyReactiveObject
             _config.CoreTypeItem.Add(new CoreTypeItem()
             {
                 ConfigType = it,
-                CoreType = it == EConfigType.KLESS ? ECoreType.kray : ECoreType.Xray
+                CoreType = ECoreType.kray
             });
         }
         _config.CoreTypeItem.ForEach(it =>
         {
+            it.CoreType = ECoreType.kray;
             var type = it.CoreType.ToString();
             switch ((int)it.ConfigType)
             {
@@ -290,8 +291,7 @@ public class OptionSettingViewModel : MyReactiveObject
                     break;
 
                 case 13:
-                    it.CoreType = ECoreType.kray;
-                    CoreType13 = it.CoreType.ToString();
+                    CoreType13 = type;
                     break;
             }
         });
@@ -465,7 +465,7 @@ public class OptionSettingViewModel : MyReactiveObject
                 default:
                     continue;
             }
-            item.CoreType = Enum.Parse<ECoreType>(type);
+            item.CoreType = ECoreType.kray;
         }
         await Task.CompletedTask;
     }

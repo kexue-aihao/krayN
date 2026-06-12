@@ -127,8 +127,8 @@ public static class ConnectionHandler
                 return null;
             }
 
-            var ip = ipInfo.ip ?? ipInfo.clientIp ?? ipInfo.ip_addr ?? ipInfo.query;
-            var country = ipInfo.country_code ?? ipInfo.country ?? ipInfo.countryCode ?? ipInfo.location?.country_code ?? "unknown";
+            var ip = ipInfo.ip ?? ipInfo.clientIp ?? ipInfo.ip_addr ?? ipInfo.query ?? ipInfo.ipAddress ?? ipInfo.address;
+            var country = ipInfo.country_code ?? ipInfo.country ?? ipInfo.countryCode ?? ipInfo.country_name ?? ipInfo.location?.country_code ?? "unknown";
 
             return new IpInfoResult(country, ip);
         }

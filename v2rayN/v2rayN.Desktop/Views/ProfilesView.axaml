@@ -273,6 +273,21 @@
                     </DataGridTemplateColumn>
                     <DataGridTextColumn
                         Width="100"
+                        Binding="{Binding RttVal}"
+                        Header="RTT (ms)"
+                        Tag="RttVal" />
+                    <DataGridTextColumn
+                        Width="100"
+                        Binding="{Binding HttpsVal}"
+                        Header="HTTPS (ms)"
+                        Tag="HttpsVal" />
+                    <DataGridTextColumn
+                        Width="100"
+                        Binding="{Binding JitterVal}"
+                        Header="抖动率 (ms)"
+                        Tag="JitterVal" />
+                    <DataGridTextColumn
+                        Width="100"
                         Binding="{Binding SpeedVal}"
                         Header="{x:Static resx:ResUI.LvTestSpeed}"
                         Tag="SpeedVal" />

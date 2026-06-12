@@ -346,8 +346,6 @@ public class Global
 
     public static readonly List<string> CoreTypes =
     [
-        "Xray",
-        "sing_box",
         "kray"
     ];
 
@@ -640,7 +638,7 @@ public class Global
         { ECoreType.shadowquic, "spongebob888/shadowquic" },
         { ECoreType.mieru, "enfein/mieru" },
         { ECoreType.kray, "kexue-aihao/krayN" },
-        { ECoreType.v2rayN, "2dust/v2rayN" },
+        { ECoreType.v2rayN, "kexue-aihao/krayN" },
     };
 
     public static readonly List<string> OtherGeoUrls =
@@ -655,6 +653,7 @@ public class Global
         @"https://api.ip.sb/geoip",
         @"https://api-ipv4.ip.sb/geoip",
         @"https://api-ipv6.ip.sb/geoip",
+        @"https://ipinfo.io/json",
         @"https://api.ipapi.is",
         @""
     ];
