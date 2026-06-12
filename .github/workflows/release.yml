@@ -17,6 +17,8 @@ permissions:
 env:
   APP_NAME: krayN
   DOTNET_VERSION: "10.0.x"
+  WINTUN_VERSION: "0.14.1"
+  WINTUN_SHA256: "07c256185d6ee3652e09fa55c0b673e2624b565e02c4b9091c79ca7d2f24ef51"
 
 jobs:
   prepare:
@@ -159,10 +161,12 @@ jobs:
             rid: win-x64
             core_artifact: krayn-core-windows-amd64.exe
             uninstaller_artifact: krayn-uninstall-windows-amd64.exe
+            wintun_arch: amd64
           - arch: arm64
             rid: win-arm64
             core_artifact: krayn-core-windows-arm64.exe
             uninstaller_artifact: krayn-uninstall-windows-arm64.exe
+            wintun_arch: arm64
     steps:
       - uses: actions/checkout@v4
         with:
@@ -181,6 +185,28 @@ jobs:
         with:
           name: ${{ matrix.uninstaller_artifact }}
           path: dist/core
+
+      - name: Download Wintun
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ProgressPreference = "SilentlyContinue"
+
+          $archive = Join-Path $env:RUNNER_TEMP "wintun-$env:WINTUN_VERSION.zip"
+          $extractDir = Join-Path $env:RUNNER_TEMP "wintun"
+          Invoke-WebRequest `
+            -Uri "https://www.wintun.net/builds/wintun-$env:WINTUN_VERSION.zip" `
+            -OutFile $archive
+
+          $actualHash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $env:WINTUN_SHA256) {
+            throw "Wintun archive checksum mismatch. Expected $env:WINTUN_SHA256, got $actualHash"
+          }
+
+          if (Test-Path $extractDir) {
+            Remove-Item $extractDir -Recurse -Force
+          }
+          Expand-Archive -Path $archive -DestinationPath $extractDir -Force
 
       - name: Publish desktop app
         shell: pwsh
@@ -206,6 +232,11 @@ jobs:
           Copy-Item "$publish\*" "$stage" -Recurse -Force
           Copy-Item "dist\core\${{ matrix.core_artifact }}" "$stage\bin\kray\krayn-core.exe" -Force
           Copy-Item "dist\core\${{ matrix.uninstaller_artifact }}" "$stage\krayn-uninstall.exe" -Force
+          $wintunDll = Join-Path $env:RUNNER_TEMP "wintun\wintun\bin\${{ matrix.wintun_arch }}\wintun.dll"
+          if (-not (Test-Path $wintunDll)) {
+            throw "wintun.dll was not found at $wintunDll"
+          }
+          Copy-Item $wintunDll "$stage\bin\kray\wintun.dll" -Force
           New-Item -ItemType Directory -Force dist\release | Out-Null
           Compress-Archive -Path "$stage\*" -DestinationPath "dist\release\krayN-$version-windows-$arch.zip" -Force
 
