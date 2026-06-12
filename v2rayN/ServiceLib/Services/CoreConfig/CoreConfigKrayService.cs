@@ -44,20 +44,43 @@ public class CoreConfigKrayService(CoreConfigContext context)
             var socksAddress = socksPort is > 0
                 ? $"127.0.0.1:{socksPort.Value}"
                 : $"127.0.0.1:{AppManager.Instance.GetLocalPort(EInboundProtocol.socks)}";
+            if (_config.TunModeItem.Mtu <= 0)
+            {
+                _config.TunModeItem.Mtu = Global.TunMtus.First();
+            }
+            if (_config.TunModeItem.Stack.IsNullOrEmpty())
+            {
+                _config.TunModeItem.Stack = Global.TunStacks.First();
+            }
+            var local = new JsonObject
+            {
+                ["api_address"] = $"127.0.0.1:{apiPortValue}",
+                ["socks_address"] = socksAddress,
+                ["allow_lan"] = _config.Inbound.FirstOrDefault()?.AllowLANConn ?? false,
+                ["mode"] = "rule",
+                ["system_proxy_mode"] = "unchanged",
+                ["resolver_type"] = "system",
+                ["tun"] = new JsonObject
+                {
+                    ["enabled"] = context.IsTunEnabled,
+                    ["interface_name"] = context.IsMacOS ? $"utun{new Random().Next(99)}" : "krayn_tun",
+                    ["mtu"] = _config.TunModeItem.Mtu,
+                    ["auto_route"] = _config.TunModeItem.AutoRoute,
+                    ["strict_route"] = _config.TunModeItem.StrictRoute,
+                    ["stack"] = _config.TunModeItem.Stack,
+                    ["dns_hijack"] = true,
+                    ["udp_timeout_seconds"] = 60,
+                    ["route_exclude"] = _config.TunModeItem.RouteExcludeAddress is { Count: > 0 }
+                        ? new JsonArray(_config.TunModeItem.RouteExcludeAddress.Select(x => JsonValue.Create(x)).ToArray())
+                        : new JsonArray(),
+                },
+            };
             var root = new JsonObject
             {
                 ["version"] = 1,
                 ["auto_start"] = true,
                 ["active_profile_id"] = profileId,
-                ["local"] = new JsonObject
-                {
-                    ["api_address"] = $"127.0.0.1:{apiPortValue}",
-                    ["socks_address"] = socksAddress,
-                    ["allow_lan"] = _config.Inbound.FirstOrDefault()?.AllowLANConn ?? false,
-                    ["mode"] = "rule",
-                    ["system_proxy_mode"] = "unchanged",
-                    ["resolver_type"] = "system",
-                },
+                ["local"] = local,
                 ["profiles"] = new JsonArray(profile),
             };
 

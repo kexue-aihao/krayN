@@ -55,6 +55,35 @@ public class CoreConfigKrayServiceTests
     }
 
     [Fact]
+    public void GenerateClientConfigContent_TunEnabled_ShouldPassKrayTunConfig()
+    {
+        var config = CoreConfigTestFactory.CreateConfig(ECoreType.kray);
+        config.TunModeItem.EnableTun = true;
+        config.TunModeItem.AutoRoute = true;
+        config.TunModeItem.StrictRoute = true;
+        config.TunModeItem.Mtu = 9000;
+        config.TunModeItem.Stack = "gvisor";
+        config.TunModeItem.RouteExcludeAddress = ["10.0.0.1/32"];
+        CoreConfigTestFactory.BindAppManagerConfig(config);
+        var node = CoreConfigTestFactory.CreateKrayNode();
+        var context = CoreConfigTestFactory.CreateContext(config, node, ECoreType.kray);
+
+        var result = new CoreConfigKrayService(context).GenerateClientConfigContent();
+
+        result.Success.Should().BeTrue($"ret msg: {result.Msg}");
+        var root = JsonUtils.ParseJson(result.Data!.ToString())!.AsObject();
+        var tun = root["local"]!["tun"]!.AsObject();
+        tun["enabled"]!.GetValue<bool>().Should().BeTrue();
+        tun["interface_name"]!.GetValue<string>().Should().Be("krayn_tun");
+        tun["mtu"]!.GetValue<int>().Should().Be(9000);
+        tun["auto_route"]!.GetValue<bool>().Should().BeTrue();
+        tun["strict_route"]!.GetValue<bool>().Should().BeTrue();
+        tun["stack"]!.GetValue<string>().Should().Be("gvisor");
+        tun["dns_hijack"]!.GetValue<bool>().Should().BeTrue();
+        tun["route_exclude"]!.AsArray().Select(x => x!.GetValue<string>()).Should().Contain("10.0.0.1/32");
+    }
+
+    [Fact]
     public async Task GenerateClientSpeedtestConfig_ShouldAllowKrayRealPing()
     {
         var config = CoreConfigTestFactory.CreateConfig(ECoreType.kray);

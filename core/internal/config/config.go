@@ -25,13 +25,26 @@ type AppConfig struct {
 }
 
 type LocalConfig struct {
-	APIAddress      string `json:"api_address"`
-	SOCKSAddress    string `json:"socks_address"`
-	AllowLAN        bool   `json:"allow_lan"`
-	Mode            string `json:"mode"`
-	SystemProxyMode string `json:"system_proxy_mode,omitempty"`
-	ResolverType    string `json:"resolver_type,omitempty"`
-	ResolverAddress string `json:"resolver_address,omitempty"`
+	APIAddress      string    `json:"api_address"`
+	SOCKSAddress    string    `json:"socks_address"`
+	AllowLAN        bool      `json:"allow_lan"`
+	Mode            string    `json:"mode"`
+	SystemProxyMode string    `json:"system_proxy_mode,omitempty"`
+	ResolverType    string    `json:"resolver_type,omitempty"`
+	ResolverAddress string    `json:"resolver_address,omitempty"`
+	Tun             TunConfig `json:"tun,omitempty"`
+}
+
+type TunConfig struct {
+	Enabled           bool     `json:"enabled"`
+	InterfaceName     string   `json:"interface_name,omitempty"`
+	MTU               int      `json:"mtu,omitempty"`
+	AutoRoute         bool     `json:"auto_route,omitempty"`
+	StrictRoute       bool     `json:"strict_route,omitempty"`
+	Stack             string   `json:"stack,omitempty"`
+	DNSHijack         bool     `json:"dns_hijack,omitempty"`
+	UDPTimeoutSeconds int      `json:"udp_timeout_seconds,omitempty"`
+	RouteExclude      []string `json:"route_exclude,omitempty"`
 }
 
 type Profile struct {
@@ -145,6 +158,7 @@ func Normalize(cfg *AppConfig) {
 	cfg.Local.SystemProxyMode = NormalizeSystemProxyMode(cfg.Local.SystemProxyMode)
 	cfg.Local.ResolverType = NormalizeResolverType(cfg.Local.ResolverType)
 	cfg.Local.ResolverAddress = strings.TrimSpace(cfg.Local.ResolverAddress)
+	cfg.Local.Tun = NormalizeTun(cfg.Local.Tun)
 	for i := range cfg.Profiles {
 		if cfg.Profiles[i].ID == "" {
 			cfg.Profiles[i].ID = NewID()
@@ -162,6 +176,38 @@ func Normalize(cfg *AppConfig) {
 	}
 	if cfg.ActiveProfileID == "" && len(cfg.Profiles) > 0 {
 		cfg.ActiveProfileID = cfg.Profiles[0].ID
+	}
+}
+
+func NormalizeTun(tun TunConfig) TunConfig {
+	tun.InterfaceName = strings.TrimSpace(tun.InterfaceName)
+	if tun.InterfaceName == "" {
+		tun.InterfaceName = "krayn_tun"
+	}
+	if tun.MTU <= 0 {
+		tun.MTU = 9000
+	}
+	tun.Stack = NormalizeTunStack(tun.Stack)
+	if tun.UDPTimeoutSeconds <= 0 {
+		tun.UDPTimeoutSeconds = 60
+	}
+	out := tun.RouteExclude[:0]
+	for _, addr := range tun.RouteExclude {
+		addr = strings.TrimSpace(addr)
+		if addr != "" {
+			out = append(out, addr)
+		}
+	}
+	tun.RouteExclude = out
+	return tun
+}
+
+func NormalizeTunStack(stack string) string {
+	switch strings.ToLower(strings.TrimSpace(stack)) {
+	case "", "gvisor":
+		return "gvisor"
+	default:
+		return strings.ToLower(strings.TrimSpace(stack))
 	}
 }
 
@@ -206,6 +252,9 @@ func Validate(cfg AppConfig) error {
 	if err := ValidateResolver(cfg.Local); err != nil {
 		return err
 	}
+	if err := ValidateTun(cfg.Local.Tun); err != nil {
+		return err
+	}
 	ids := make(map[string]struct{}, len(cfg.Profiles))
 	for _, profile := range cfg.Profiles {
 		if err := ValidateProfile(profile); err != nil {
@@ -219,6 +268,33 @@ func Validate(cfg AppConfig) error {
 	if cfg.ActiveProfileID != "" {
 		if _, ok := ids[cfg.ActiveProfileID]; !ok {
 			return fmt.Errorf("active profile %q does not exist", cfg.ActiveProfileID)
+		}
+	}
+	return nil
+}
+
+func ValidateTun(tun TunConfig) error {
+	if !tun.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(tun.InterfaceName) == "" {
+		return errors.New("tun interface name is required")
+	}
+	if len(tun.InterfaceName) > 64 {
+		return errors.New("tun interface name is too long")
+	}
+	if tun.MTU < 1280 || tun.MTU > 65535 {
+		return errors.New("tun mtu must be between 1280 and 65535")
+	}
+	if NormalizeTunStack(tun.Stack) != "gvisor" {
+		return fmt.Errorf("unsupported tun stack %q", tun.Stack)
+	}
+	if tun.UDPTimeoutSeconds < 1 {
+		return errors.New("tun udp timeout must be greater than zero")
+	}
+	for _, addr := range tun.RouteExclude {
+		if _, _, err := net.ParseCIDR(strings.TrimSpace(addr)); err != nil {
+			return fmt.Errorf("tun route exclude %q: %w", addr, err)
 		}
 	}
 	return nil

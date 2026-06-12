@@ -33,6 +33,7 @@ import (
 	"krayn/core/internal/config"
 	"krayn/core/internal/proxy"
 	"krayn/core/internal/stats"
+	"krayn/core/internal/tunbridge"
 )
 
 type Status string
@@ -70,6 +71,7 @@ type Engine struct {
 	lastError string
 	cancel    context.CancelFunc
 	socks     *proxy.SOCKSServer
+	tun       *tunbridge.Service
 	startedAt time.Time
 }
 
@@ -82,6 +84,8 @@ type RuntimeState struct {
 	APIAddress      string         `json:"api_address"`
 	Mode            string         `json:"mode"`
 	SystemProxyMode string         `json:"system_proxy_mode"`
+	TunEnabled      bool           `json:"tun_enabled"`
+	TunInterface    string         `json:"tun_interface,omitempty"`
 	Stats           stats.Snapshot `json:"stats"`
 }
 
@@ -147,7 +151,7 @@ func (e *Engine) Config() config.AppConfig {
 func (e *Engine) State() RuntimeState {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
-	return RuntimeState{
+	state := RuntimeState{
 		Status:          e.status,
 		LastError:       e.lastError,
 		StartedAt:       e.startedAt,
@@ -156,8 +160,13 @@ func (e *Engine) State() RuntimeState {
 		APIAddress:      e.cfg.Local.APIAddress,
 		Mode:            e.cfg.Local.Mode,
 		SystemProxyMode: e.cfg.Local.SystemProxyMode,
+		TunEnabled:      e.cfg.Local.Tun.Enabled,
 		Stats:           e.stats.Snapshot(),
 	}
+	if e.tun != nil {
+		state.TunInterface = e.tun.InterfaceName()
+	}
+	return state
 }
 
 func (e *Engine) Start(parent context.Context) error {
@@ -189,10 +198,41 @@ func (e *Engine) Start(parent context.Context) error {
 	}
 	e.cancel = cancel
 	e.socks = socks
+	e.tun = nil
 	e.status = StatusStarting
 	e.lastError = ""
 	e.startedAt = time.Now().UTC()
 	e.mu.Unlock()
+
+	var tunService *tunbridge.Service
+	if cfg.Local.Tun.Enabled {
+		endpointIPs := resolveTunEndpointIPs(context.Background(), cfg.Local, profile, e.logger)
+		dialer := tunbridgeDialer(func(ctx context.Context) (io.ReadWriteCloser, error) {
+			return e.dialKLESSSession(ctx, profile, cfg.Local)
+		})
+		var err error
+		tunService, err = tunbridge.Start(ctx, tunbridge.Option{
+			Config:      cfg.Local.Tun,
+			Dialer:      dialer,
+			EndpointIPs: endpointIPs,
+			Logger:      e.logger,
+		})
+		if err != nil {
+			cancel()
+			_ = socks.Close()
+			e.mu.Lock()
+			e.status = StatusError
+			e.lastError = err.Error()
+			e.cancel = nil
+			e.socks = nil
+			e.tun = nil
+			e.mu.Unlock()
+			return err
+		}
+		e.mu.Lock()
+		e.tun = tunService
+		e.mu.Unlock()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -201,11 +241,15 @@ func (e *Engine) Start(parent context.Context) error {
 	select {
 	case err := <-errCh:
 		cancel()
+		if tunService != nil {
+			tunService.Close()
+		}
 		e.mu.Lock()
 		e.status = StatusError
 		e.lastError = err.Error()
 		e.cancel = nil
 		e.socks = nil
+		e.tun = nil
 		e.mu.Unlock()
 		return err
 	case <-time.After(150 * time.Millisecond):
@@ -221,8 +265,10 @@ func (e *Engine) Stop() error {
 	e.mu.Lock()
 	cancel := e.cancel
 	socks := e.socks
+	tun := e.tun
 	e.cancel = nil
 	e.socks = nil
+	e.tun = nil
 	e.status = StatusStopped
 	e.lastError = ""
 	e.startedAt = time.Time{}
@@ -231,7 +277,12 @@ func (e *Engine) Stop() error {
 		cancel()
 	}
 	if socks != nil {
-		return socks.Close()
+		if err := socks.Close(); err != nil {
+			return err
+		}
+	}
+	if tun != nil {
+		tun.Close()
 	}
 	return nil
 }
@@ -410,6 +461,22 @@ func (e *Engine) TestProfile(ctx context.Context, profileID string, req Diagnost
 }
 
 func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile, target proxy.Target, local config.LocalConfig) (io.ReadWriteCloser, error) {
+	secure, err := e.dialKLESSSession(ctx, profile, local)
+	if err != nil {
+		return nil, err
+	}
+	if err := proxy.WriteConnectRequest(secure, target); err != nil {
+		_ = secure.Close()
+		return nil, fmt.Errorf("relay connect request: %w", err)
+	}
+	if err := proxy.ReadConnectResponse(secure); err != nil {
+		_ = secure.Close()
+		return nil, fmt.Errorf("relay connect response: %w", err)
+	}
+	return secure, nil
+}
+
+func (e *Engine) dialKLESSSession(ctx context.Context, profile config.Profile, local config.LocalConfig) (io.ReadWriteCloser, error) {
 	raw, err := dialTransport(ctx, profile, local)
 	if err != nil {
 		return nil, fmt.Errorf("dial kless transport: %w", err)
@@ -422,15 +489,13 @@ func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile,
 		}
 		return nil, fmt.Errorf("kless handshake: %w", err)
 	}
-	if err := proxy.WriteConnectRequest(secure, target); err != nil {
-		_ = secure.Close()
-		return nil, fmt.Errorf("relay connect request: %w", err)
-	}
-	if err := proxy.ReadConnectResponse(secure); err != nil {
-		_ = secure.Close()
-		return nil, fmt.Errorf("relay connect response: %w", err)
-	}
 	return secure, nil
+}
+
+type tunbridgeDialer func(context.Context) (io.ReadWriteCloser, error)
+
+func (f tunbridgeDialer) Dial(ctx context.Context) (io.ReadWriteCloser, error) {
+	return f(ctx)
 }
 
 func (e *Engine) clientHandshake(raw io.ReadWriteCloser, profile config.Profile) (*kless.Conn, error) {
@@ -556,6 +621,27 @@ func (e *Engine) watchSOCKS(errCh <-chan error) {
 		return
 	}
 	e.status = StatusStopped
+}
+
+func resolveTunEndpointIPs(ctx context.Context, local config.LocalConfig, profile config.Profile, logger *slog.Logger) []net.IP {
+	endpoint, err := endpointAddress(profile)
+	if err != nil {
+		if logger != nil {
+			logger.Warn("resolve tun endpoint failed", "error", err)
+		}
+		return nil
+	}
+	host := endpoint.host
+	if ip := net.ParseIP(host); ip != nil {
+		return []net.IP{ip}
+	}
+	resolveCtx, cancel := context.WithTimeout(ctx, diagnosticConnectTimeout)
+	defer cancel()
+	ips, err := newResolver(local).LookupIP(resolveCtx, host)
+	if err != nil && logger != nil {
+		logger.Warn("resolve tun endpoint failed", "host", host, "error", err)
+	}
+	return ips
 }
 
 func dialTransport(ctx context.Context, profile config.Profile, local config.LocalConfig) (io.ReadWriteCloser, error) {

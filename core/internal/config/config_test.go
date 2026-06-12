@@ -40,6 +40,7 @@ func TestNormalizeLocalModes(t *testing.T) {
 	cfg.Local.SystemProxyMode = "PAC"
 	cfg.Local.ResolverType = "HTTPS"
 	cfg.Local.ResolverAddress = " https://doh.pub/dns-query "
+	cfg.Local.Tun.Enabled = true
 
 	Normalize(&cfg)
 
@@ -55,6 +56,12 @@ func TestNormalizeLocalModes(t *testing.T) {
 	if cfg.Local.ResolverAddress != "https://doh.pub/dns-query" {
 		t.Fatalf("resolver address mismatch: got %q", cfg.Local.ResolverAddress)
 	}
+	if cfg.Local.Tun.InterfaceName != "krayn_tun" {
+		t.Fatalf("tun interface mismatch: got %q", cfg.Local.Tun.InterfaceName)
+	}
+	if cfg.Local.Tun.MTU != 9000 {
+		t.Fatalf("tun mtu mismatch: got %d", cfg.Local.Tun.MTU)
+	}
 
 	cfg.Local.Mode = "unexpected"
 	cfg.Local.SystemProxyMode = "unexpected"
@@ -68,6 +75,26 @@ func TestNormalizeLocalModes(t *testing.T) {
 	}
 	if cfg.Local.ResolverType != "system" {
 		t.Fatalf("invalid resolver type should default to system, got %q", cfg.Local.ResolverType)
+	}
+}
+
+func TestValidateTun(t *testing.T) {
+	cfg := Default()
+	cfg.Local.Tun.Enabled = true
+	Normalize(&cfg)
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("default tun should validate: %v", err)
+	}
+
+	cfg.Local.Tun.MTU = 1200
+	if err := Validate(cfg); err == nil {
+		t.Fatal("small tun mtu should be rejected")
+	}
+
+	cfg.Local.Tun.MTU = 9000
+	cfg.Local.Tun.RouteExclude = []string{"not-a-cidr"}
+	if err := Validate(cfg); err == nil {
+		t.Fatal("invalid tun route exclude should be rejected")
 	}
 }
 
