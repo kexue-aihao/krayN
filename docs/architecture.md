@@ -23,6 +23,8 @@ flowchart LR
 
 The SOCKS5 path writes a small connect request over the encrypted KLESS stream. A compatible server-side relay should call `kless.ServerHandshake`, read `proxy.ReadConnectRequest`, connect to the requested target, send `proxy.WriteConnectResponse`, and relay bytes.
 
+Knode deployments need a public inbound in `kless-server` mode for direct krayN clients, usually exposed as `public-kless`. The `tcp` / `local-tcp` inlet shown in Knode samples is an internal forwarding port and is not a direct client relay.
+
 ## Platform Shape
 
 The desktop app runs the Go core as a sidecar binary. Android and iOS should replace that sidecar with native bindings or a platform service:
@@ -32,4 +34,3 @@ The desktop app runs the Go core as a sidecar binary. Android and iOS should rep
 - Windows / macOS / Linux: desktop Flutter bundle plus matching `krayn-core` executable.
 
 System-level TUN/VPN capture is intentionally outside the first Go SOCKS runtime. The control API and profile model are stable enough for that native layer to reuse.
-

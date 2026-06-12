@@ -422,8 +422,8 @@ func (e *Engine) dialProfileContext(ctx context.Context, profile config.Profile,
 	secure, err := e.clientHandshake(raw, profile)
 	if err != nil {
 		_ = raw.Close()
-		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-			return nil, fmt.Errorf("kless handshake: server closed the connection before handshake completed; check client_id, client_secret, server_public_key/server_signing_key, transport, and server relay mode: %w", err)
+		if isKlessHandshakeTruncated(err) {
+			return nil, fmt.Errorf("kless handshake: server closed the connection before handshake completed; check client_id, client_secret, server_public_key/server_signing_key, transport, and server relay mode. %s: %w", klessHandshakeEOFHint(), err)
 		}
 		return nil, fmt.Errorf("kless handshake: %w", err)
 	}
@@ -458,6 +458,28 @@ func (e *Engine) clientHandshake(raw io.ReadWriteCloser, profile config.Profile)
 		PaddingMin:       profile.HandshakePadding.Min,
 		PaddingMax:       profile.HandshakePadding.Max,
 	})
+}
+
+func klessHandshakeEOFHint() string {
+	return "If the remote node is managed by Knode, the client endpoint must be a public inbound in mode \"kless-server\" (often named \"public-kless\"). A plain \"tcp\" / \"local-tcp\" inbound is only a forwarding port and cannot accept a direct krayN client."
+}
+
+func isKlessHandshakeTruncated(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	message := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"connection was aborted",
+		"connection reset",
+		"forcibly closed",
+		"broken pipe",
+	} {
+		if strings.Contains(message, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func decodeKLESSKey(text string) ([]byte, error) {

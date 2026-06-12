@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -150,6 +151,60 @@ func TestDialContextAcceptsURLSafeKLESSKeys(t *testing.T) {
 	}
 	if !bytes.Equal(got, []byte("pong")) {
 		t.Fatalf("got %q", string(got))
+	}
+}
+
+func TestDialContextReportsKnodeRelayHintOnHandshakeEOF(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+	}()
+
+	serverPublic, _, err := kless.GenerateServerIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientSecret, err := kless.GenerateClientSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Default()
+	profile := config.UpsertProfile(&cfg, config.Profile{
+		Name:            "eof",
+		Transport:       "tcp",
+		Endpoint:        listener.Addr().String(),
+		ClientID:        "client-1",
+		ClientSecret:    kless.EncodeKey(clientSecret),
+		ServerPublicKey: kless.EncodeKey(serverPublic),
+	})
+	cfg.ActiveProfileID = profile.ID
+	appEngine := &Engine{
+		cfg:    cfg,
+		stats:  nil,
+		status: StatusStopped,
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	target, err := proxy.ParseTarget("www.google.com:443")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = appEngine.DialContext(ctx, target)
+	if err == nil {
+		t.Fatal("expected dial failure")
+	}
+	if !strings.Contains(err.Error(), "kless-server") || !strings.Contains(err.Error(), "local-tcp") {
+		t.Fatalf("missing Knode hint: %v", err)
 	}
 }
 

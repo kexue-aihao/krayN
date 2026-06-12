@@ -56,6 +56,10 @@ JSON 订阅示例：
 }
 ```
 
+### Knode 接入提示
+
+如果节点来自 Knode，krayN 客户端应连接对外开放的 `kless-server` 公网入站（通常叫 `public-kless`）。Knode 的 `tcp` / `local-tcp` 入站只是内部转发口，不能直接作为 krayN 客户端入口使用。
+
 ### 本地开发
 
 初始化子模块：
@@ -156,6 +160,10 @@ The project has moved from the earlier custom Flutter/Go client into a “v2rayN
 - Bundles the core at `bin/kray/krayn-core(.exe)`, matching v2rayN core discovery.
 - Defaults the UI language to Chinese.
 - Includes `krayn-uninstall.exe` in Windows packages for complete cleanup.
+
+### Knode note
+
+When a node is backed by Knode, krayN must connect to a public `kless-server` inbound (often named `public-kless`). Knode `tcp` / `local-tcp` listeners are internal forwarding ports and cannot be used as a direct client entrypoint.
 
 ### Build
 
