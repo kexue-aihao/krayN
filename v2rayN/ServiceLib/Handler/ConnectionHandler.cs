@@ -106,14 +106,29 @@ public static class ConnectionHandler
     /// </summary>
     public static async Task<IpInfoResult?> GetIPInfo(IWebProxy? webProxy)
     {
+        var urls = new List<string>();
+        var configuredUrl = AppManager.Instance.Config.SpeedTestItem.IPAPIUrl;
+        if (configuredUrl.IsNotEmpty())
+        {
+            urls.Add(configuredUrl);
+        }
+        urls.AddRange(Global.IPAPIUrls.Where(url => url.IsNotEmpty()));
+
+        foreach (var url in urls.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var ipInfo = await GetIPInfoFromUrl(webProxy, url);
+            if (ipInfo?.Ip is not null && Utils.IsIpv4(ipInfo.Value.Ip))
+            {
+                return ipInfo;
+            }
+        }
+        return null;
+    }
+
+    private static async Task<IpInfoResult?> GetIPInfoFromUrl(IWebProxy? webProxy, string url)
+    {
         try
         {
-            var url = AppManager.Instance.Config.SpeedTestItem.IPAPIUrl;
-            if (url.IsNullOrEmpty())
-            {
-                return null;
-            }
-
             var downloadHandle = new DownloadService();
             var result = await downloadHandle.TryDownloadString(url, webProxy, "");
             if (result == null)
@@ -129,7 +144,6 @@ public static class ConnectionHandler
 
             var ip = ipInfo.ip ?? ipInfo.clientIp ?? ipInfo.ip_addr ?? ipInfo.query ?? ipInfo.ipAddress ?? ipInfo.address;
             var country = ipInfo.country_code ?? ipInfo.country ?? ipInfo.countryCode ?? ipInfo.country_name ?? ipInfo.location?.country_code ?? "unknown";
-
             return new IpInfoResult(country, ip);
         }
         catch

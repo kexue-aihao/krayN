@@ -135,7 +135,8 @@ public static class ConfigHandler
         {
             config.SpeedTestItem.UdpTestTarget = Global.UdpTestTargets.First();
         }
-        if (config.SpeedTestItem.IPAPIUrl.IsNullOrEmpty())
+        if (config.SpeedTestItem.IPAPIUrl.IsNullOrEmpty()
+            || config.SpeedTestItem.IPAPIUrl.Equals("https://api.ip.sb/geoip", StringComparison.OrdinalIgnoreCase))
         {
             config.SpeedTestItem.IPAPIUrl = Global.IPAPIUrls.First();
         }
