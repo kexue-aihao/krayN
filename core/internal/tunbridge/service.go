@@ -161,6 +161,9 @@ func (p *krayProxy) DialContext(ctx context.Context, metadata *M.Metadata) (net.
 }
 
 func (p *krayProxy) DialUDP(metadata *M.Metadata) (net.PacketConn, error) {
+	if shouldDropLocalUDP(metadata) {
+		return newBlackholePacketConn(metadata), nil
+	}
 	assoc, err := kraytun.AssociateUDP(context.Background(), p.dialer)
 	if err != nil {
 		return nil, err
@@ -181,6 +184,38 @@ func (p *krayProxy) Addr() string {
 
 func (p *krayProxy) Proto() proto.Proto {
 	return proto.Relay
+}
+
+func shouldDropLocalUDP(metadata *M.Metadata) bool {
+	if metadata == nil || !metadata.DstIP.IsValid() {
+		return false
+	}
+	if isLocalDiscoveryUDP(metadata.DstPort) {
+		return true
+	}
+	addr := metadata.DstIP
+	if addr.IsMulticast() || addr.IsLinkLocalUnicast() || addr.IsLinkLocalMulticast() || addr.IsInterfaceLocalMulticast() {
+		return true
+	}
+	if addr.Is4() {
+		if addr == netip.MustParseAddr("255.255.255.255") || addr == netip.MustParseAddr("172.18.0.3") {
+			return true
+		}
+	}
+	return false
+}
+
+func isLocalDiscoveryUDP(port uint16) bool {
+	switch port {
+	case 137, // NetBIOS Name Service
+		138,  // NetBIOS Datagram Service
+		5353, // mDNS
+		5355, // LLMNR
+		1900: // SSDP
+		return true
+	default:
+		return false
+	}
 }
 
 func relayAddressFromMetadata(metadata *M.Metadata) (relay.Address, error) {
@@ -366,4 +401,47 @@ func (a hostPortAddr) Network() string {
 
 func (a hostPortAddr) String() string {
 	return net.JoinHostPort(a.host, strconv.Itoa(int(a.port)))
+}
+
+type blackholePacketConn struct {
+	local net.Addr
+}
+
+func newBlackholePacketConn(metadata *M.Metadata) *blackholePacketConn {
+	local := relayNetAddr(relay.Address{Host: "0.0.0.0"})
+	if metadata != nil && metadata.MidIP.IsValid() {
+		local = &net.UDPAddr{IP: net.IP(metadata.MidIP.AsSlice()), Port: int(metadata.MidPort)}
+	}
+	return &blackholePacketConn{local: local}
+}
+
+func (p *blackholePacketConn) ReadFrom([]byte) (int, net.Addr, error) {
+	return 0, nil, io.EOF
+}
+
+func (p *blackholePacketConn) WriteTo(buf []byte, _ net.Addr) (int, error) {
+	return len(buf), nil
+}
+
+func (p *blackholePacketConn) Close() error {
+	return nil
+}
+
+func (p *blackholePacketConn) LocalAddr() net.Addr {
+	if p.local != nil {
+		return p.local
+	}
+	return relayNetAddr(relay.Address{Host: "0.0.0.0"})
+}
+
+func (p *blackholePacketConn) SetDeadline(time.Time) error {
+	return nil
+}
+
+func (p *blackholePacketConn) SetReadDeadline(time.Time) error {
+	return nil
+}
+
+func (p *blackholePacketConn) SetWriteDeadline(time.Time) error {
+	return nil
 }
